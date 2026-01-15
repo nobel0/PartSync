@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Part, Notification, ViewType, AppConfig, InventoryDisplayMode, User, Conflict } from './types';
 import { storageService } from './services/storageService';
@@ -67,7 +66,7 @@ const App: React.FC = () => {
         <div className="flex items-center gap-3 mb-10 px-2">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg bg-[var(--primary-color)] overflow-hidden shrink-0">
             {config.logoUrl ? (
-              <img src={config.logoUrl} className="max-w-[70%] max-h-[70%] object-contain invert grayscale" alt="Logo" />
+              <img src={config.logoUrl} className="max-w-[80%] max-h-[80%] object-contain" alt="Logo" />
             ) : (
               <ICONS.Inventory />
             )}

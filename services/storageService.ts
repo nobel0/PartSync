@@ -115,10 +115,11 @@ export const storageService = {
   migratePartKey: (oldKey: string, newKey: string) => {
     const parts = storageService.getParts();
     const updated = parts.map(p => {
-      const val = p[oldKey];
-      const newPart = { ...p, [newKey]: val, updatedAt: Date.now() };
+      const pObj = p as Record<string, any>;
+      const val = pObj[oldKey];
+      const newPart: any = { ...p, [newKey]: val, updatedAt: Date.now() };
       delete newPart[oldKey];
-      return newPart;
+      return newPart as Part;
     });
     localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
     storageService.notifySync();
@@ -128,9 +129,9 @@ export const storageService = {
   clearColumnData: (key: string) => {
     const parts = storageService.getParts();
     const updated = parts.map(p => {
-      const newPart = { ...p, updatedAt: Date.now() };
+      const newPart: any = { ...p, updatedAt: Date.now() };
       delete newPart[key];
-      return newPart;
+      return newPart as Part;
     });
     localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
     storageService.notifySync();
@@ -173,7 +174,6 @@ export const storageService = {
     storageService.pushToCloud();
   },
 
-  // Fix: Added createTransfer method required by Transfers.tsx
   createTransfer: (transfer: Omit<Transfer, 'id' | 'timestamp' | 'status' | 'supplierSignature'>) => {
     const transfers = storageService.getTransfers();
     const newTransfer: Transfer = {
@@ -189,7 +189,6 @@ export const storageService = {
     storageService.pushToCloud();
   },
 
-  // Fix: Added acceptTransfer method required by Transfers.tsx
   acceptTransfer: (id: string) => {
     const transfers = storageService.getTransfers();
     const idx = transfers.findIndex(t => t.id === id);
@@ -210,7 +209,6 @@ export const storageService = {
 
     localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
 
-    // Update parts stock and location
     transfer.parts.forEach(p => {
       storageService.updateStock(
         p.partId, 
@@ -281,7 +279,10 @@ export const storageService = {
     const config = storageService.getConfig();
     const parts = storageService.getParts();
     let csv = config.columns.map(c => c.label).join(',') + "\n";
-    parts.forEach(p => { csv += config.columns.map(c => `"${String(p[c.id] || '').replace(/"/g, '""')}"`).join(',') + "\n"; });
+    parts.forEach(p => { 
+      const pObj = p as Record<string, any>;
+      csv += config.columns.map(c => `"${String(pObj[c.id] || '').replace(/"/g, '""')}"`).join(',') + "\n"; 
+    });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
