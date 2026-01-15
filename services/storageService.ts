@@ -33,6 +33,8 @@ const DEFAULT_CONFIG: AppConfig = {
     { id: 'supplierName', label: 'Supplier', type: 'text', isCore: true },
   ],
   labels: { inventory: "Asset Registry", dashboard: "Command Center", suppliers: "Vendor Network" },
+  adminEmail: "abdalhady.joharji@gmail.com",
+  adminPassword: "admin",
   updatedAt: Date.now()
 };
 

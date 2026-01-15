@@ -104,6 +104,8 @@ export interface AppConfig {
     dashboard: string;
     suppliers: string;
   };
+  adminEmail?: string;
+  adminPassword?: string;
   updatedAt: number;
 }
 

@@ -129,31 +129,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
       <div className="bg-white rounded-[32px] border border-slate-200 shadow-xl p-12">
         {activeTab === 'VISUALS' && (
-          <div className="space-y-10 max-w-2xl">
-              <div className="grid grid-cols-2 gap-10">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Platform Branding</label>
-                  <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.appName} onChange={e => setFormData({ ...formData, appName: e.target.value })} />
+          <div className="space-y-12">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-4xl">
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Platform Branding</label>
+                    <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.appName} onChange={e => setFormData({ ...formData, appName: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">UI Accent Color</label>
+                    <div className="flex gap-4 items-center">
+                      <input type="color" className="h-14 w-20 rounded-2xl cursor-pointer border-none bg-transparent" value={formData.primaryColor} onChange={e => setFormData({ ...formData, primaryColor: e.target.value })} />
+                      <span className="font-mono text-sm text-slate-500 font-bold">{formData.primaryColor}</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">UI Accent Color</label>
-                  <div className="flex gap-4 items-center">
-                    <input type="color" className="h-14 w-20 rounded-2xl cursor-pointer border-none bg-transparent" value={formData.primaryColor} onChange={e => setFormData({ ...formData, primaryColor: e.target.value })} />
-                    <span className="font-mono text-sm text-slate-500 font-bold">{formData.primaryColor}</span>
+
+                <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Access Credentials</h4>
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Email</label>
+                    <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminEmail} onChange={e => setFormData({ ...formData, adminEmail: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Passkey</label>
+                    <input type="password" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminPassword} onChange={e => setFormData({ ...formData, adminPassword: e.target.value })} />
                   </div>
                 </div>
               </div>
 
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-4">Identity Logo</label>
-                <div className="flex items-center gap-10 bg-slate-50 p-6 rounded-[32px] border border-slate-100">
+                <div className="flex items-center gap-10 bg-slate-50 p-6 rounded-[32px] border border-slate-100 max-w-4xl">
                   <div className="w-24 h-24 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                     <img src={formData.logoUrl} className="max-w-[80%] max-h-[80%] object-contain" alt="Preview" />
                   </div>
                   <div className="space-y-4 flex-1">
                     <input className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold" placeholder="Logo URL..." value={formData.logoUrl} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
                     <label className="inline-block bg-white px-6 py-3 rounded-xl text-[10px] font-black border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
-                      UPLOAD IMAGE
+                      UPLOAD BRAND IMAGE
                       <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                     </label>
                   </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, AppConfig } from '../types';
 import { storageService } from '../services/storageService';
@@ -25,13 +24,15 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // TEST ACCOUNT LOGIC
+    const adminEmail = config.adminEmail || 'abdalhady.joharji@gmail.com';
+    const adminPass = config.adminPassword || 'admin';
+
     if (mode === 'LOGIN') {
-      if (email === 'admin@test.com' && password === 'admin') {
+      if (email === adminEmail && password === adminPass) {
         onAuthenticated({ 
           id: 'admin_01', 
           username: 'System Admin', 
-          email: 'admin@test.com', 
+          email: adminEmail, 
           role: 'ADMIN', 
           assignedLine: 'ALL' 
         });
@@ -48,7 +49,6 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
         return;
       }
 
-      // Simulation for other emails
       const user: User = { 
         id: Math.random().toString(36).substr(2, 9), 
         username: email.split('@')[0], 
@@ -60,6 +60,17 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
     } else {
       setMode('CHALLENGE');
     }
+  };
+
+  const loginAsAdmin = () => {
+    const adminEmail = config.adminEmail || 'abdalhady.joharji@gmail.com';
+    onAuthenticated({ 
+      id: 'admin_01', 
+      username: 'System Admin', 
+      email: adminEmail, 
+      role: 'ADMIN', 
+      assignedLine: 'ALL' 
+    });
   };
 
   const verifyHuman = () => {
@@ -86,19 +97,25 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
       <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden relative border border-white/20">
         <div className="p-10 lg:p-12">
           <div className="flex flex-col items-center mb-10">
-            <div className="p-5 bg-slate-900 text-white rounded-3xl shadow-xl mb-6">
-              <ICONS.Inventory />
+            <div className="w-20 h-20 bg-slate-900 rounded-3xl shadow-xl mb-6 flex items-center justify-center overflow-hidden">
+               {config.logoUrl ? <img src={config.logoUrl} className="max-w-[70%] max-h-[70%] object-contain" alt="Logo" /> : <ICONS.Inventory />}
             </div>
-            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">PartFlow Pro</h1>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Engineering Identity System</p>
+            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">{config.appName}</h1>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-2 text-center">Engineering Identity System</p>
           </div>
 
           {mode !== 'CHALLENGE' ? (
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-4">
-                 <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1">Test Credentials</p>
-                 <p className="text-[10px] text-blue-800 font-bold">Admin: admin@test.com / admin</p>
-                 <p className="text-[10px] text-blue-800 font-bold">Engineer: engineer@test.com / pass123</p>
+              <div className="flex flex-col gap-2">
+                 <button type="button" onClick={loginAsAdmin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-lg hover:bg-black transition-all">
+                    ADMIN ACCESS LOGIN
+                 </button>
+              </div>
+
+              <div className="flex items-center gap-4 my-2">
+                <div className="h-[1px] bg-slate-100 flex-1"></div>
+                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">or standard login</span>
+                <div className="h-[1px] bg-slate-100 flex-1"></div>
               </div>
 
               {mode === 'SIGNUP' && (
@@ -124,8 +141,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
                 <input required type="password" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
               </div>
 
-              <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-sm shadow-2xl hover:bg-black transition-all active:scale-95">
-                {mode === 'LOGIN' ? 'ACCESS CONTROL PANEL' : 'INITIALIZE REGISTRATION'}
+              <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-2xl hover:bg-blue-700 transition-all active:scale-95">
+                {mode === 'LOGIN' ? 'AUTHENTICATE USER' : 'INITIALIZE REGISTRATION'}
               </button>
 
               <div className="pt-6 border-t border-slate-100 text-center">
