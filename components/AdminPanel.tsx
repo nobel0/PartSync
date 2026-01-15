@@ -167,7 +167,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               </div>
               <div className="space-y-2">
                 <label className="text-[9px] font-black text-slate-400 uppercase ml-1">System ID (Database Key)</label>
-                <input disabled={editingColId && formData.columns.find(c => c.id === editingColId)?.isCore} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none font-mono text-[10px] font-bold disabled:bg-slate-100" value={newColKey} onChange={e => setNewColKey(e.target.value.toLowerCase().replace(/\s+/g, '_'))} />
+                <input 
+                  disabled={!!(editingColId && formData.columns.find(c => c.id === editingColId)?.isCore)} 
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none font-mono text-[10px] font-bold disabled:bg-slate-100" 
+                  value={newColKey} 
+                  onChange={e => setNewColKey(e.target.value.toLowerCase().replace(/\s+/g, '_'))} 
+                />
               </div>
               <div className="flex gap-2">
                  <select className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold" value={newColType} onChange={e => setNewColType(e.target.value as any)}>
