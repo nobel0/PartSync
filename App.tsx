@@ -65,8 +65,17 @@ const App: React.FC = () => {
     <div className="flex flex-col lg:flex-row h-screen bg-[#F1F5F9] overflow-hidden" style={{'--primary-color': config.primaryColor} as any}>
       <aside className="hidden lg:flex w-72 bg-white border-r border-slate-200 flex-col p-6 shadow-xl z-30">
         <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="p-2.5 rounded-xl text-white shadow-lg bg-[var(--primary-color)]"><ICONS.Inventory /></div>
-          <div><h1 className="text-lg font-bold text-slate-900 leading-tight">PartFlow Pro</h1><p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{user.username}</p></div>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg bg-[var(--primary-color)] overflow-hidden shrink-0">
+            {config.logoUrl ? (
+              <img src={config.logoUrl} className="max-w-[70%] max-h-[70%] object-contain invert grayscale" alt="Logo" />
+            ) : (
+              <ICONS.Inventory />
+            )}
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-lg font-black text-slate-900 leading-tight truncate">{config.appName}</h1>
+            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{user.username}</p>
+          </div>
         </div>
         <nav className="flex-1 space-y-1">
           <NavItem id="DASHBOARD" label="Center" icon={ICONS.Dashboard} />
@@ -76,7 +85,7 @@ const App: React.FC = () => {
           <NavItem id="ALERTS" label="Alerts" icon={ICONS.Alerts} badge={unreadCount} />
           {user.role === 'ADMIN' && <NavItem id="ADMIN" label="System" icon={ICONS.Settings} />}
         </nav>
-        <button onClick={() => { storageService.setCurrentUser(null); setUser(null); }} className="mt-auto flex items-center gap-3 w-full px-4 py-3 rounded-xl text-slate-400 hover:text-red-600 transition-colors">Sign Out</button>
+        <button onClick={() => { storageService.setCurrentUser(null); setUser(null); }} className="mt-auto flex items-center gap-3 w-full px-4 py-3 rounded-xl text-slate-400 hover:text-red-600 transition-colors font-bold text-sm">Sign Out</button>
       </aside>
 
       {/* Mobile Nav */}
@@ -89,10 +98,12 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 lg:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-10 shrink-0">
-          <h2 className="text-base lg:text-xl font-black text-slate-800 uppercase tracking-tight">{view}</h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-base lg:text-xl font-black text-slate-800 uppercase tracking-tight">{view}</h2>
+            {cloudStatus === 'SYNCING' && <div className="flex items-center gap-2"><div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Mesh Sync Active</span></div>}
+          </div>
           <div className="flex gap-4">
-             {cloudStatus === 'SYNCING' && <span className="text-[9px] font-black text-blue-500 animate-pulse uppercase">Syncing...</span>}
-             {user.role !== 'SUPPLIER' && <button onClick={() => setShowPartForm(true)} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-xs">+ New Asset</button>}
+             {user.role !== 'SUPPLIER' && <button onClick={() => setShowPartForm(true)} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-black transition-colors shadow-lg">+ New Asset</button>}
           </div>
         </header>
 
@@ -101,8 +112,8 @@ const App: React.FC = () => {
           {view === 'INVENTORY' && (
             <div className="space-y-4">
                <div className="flex bg-white p-1 rounded-xl border border-slate-200 w-fit">
-                  <button onClick={() => setDisplayMode('GRID')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'GRID' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>GRID</button>
-                  <button onClick={() => setDisplayMode('SHEET')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'SHEET' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>SHEET</button>
+                  <button onClick={() => setDisplayMode('GRID')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'GRID' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>GRID VIEW</button>
+                  <button onClick={() => setDisplayMode('SHEET')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'SHEET' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>SHEET VIEW</button>
                 </div>
               {displayMode === 'GRID' ? <Inventory user={user} parts={parts} config={config} onReceive={(id, qty) => { storageService.updateStock(id, qty, 'RECEIVE'); loadData(); }} onEdit={setEditingPart} /> : <InventorySheet user={user} parts={parts} config={config} onEdit={setEditingPart} onReceive={(id, qty) => { storageService.updateStock(id, qty, 'RECEIVE'); loadData(); }} onDataRefresh={loadData} />}
             </div>
@@ -115,7 +126,7 @@ const App: React.FC = () => {
 
         {(showPartForm || editingPart) && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
-            <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-4xl h-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-5xl h-full max-h-[92vh] overflow-hidden flex flex-col">
                <PartForm config={config} onClose={() => { setShowPartForm(false); setEditingPart(null); }} onSave={(p) => { storageService.savePart(p); loadData(); setShowPartForm(false); setEditingPart(null); }} initialData={editingPart || undefined} />
             </div>
           </div>

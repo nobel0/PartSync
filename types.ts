@@ -91,6 +91,7 @@ export interface Notification {
 
 export interface AppConfig {
   appName: string;
+  logoUrl?: string;
   primaryColor: string;
   accentColor: string;
   carModels: string[];
