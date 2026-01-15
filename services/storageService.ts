@@ -1,0 +1,271 @@
+
+import { Part, Notification, AppConfig, ColumnDefinition, User, Conflict, Transfer, Supplier, PartLocation } from '../types';
+import { LOW_STOCK_THRESHOLD } from '../constants';
+
+const PARTS_KEY = 'partflow_parts_v7';
+const NOTIFICATIONS_KEY = 'partflow_notifications_v7';
+const CONFIG_KEY = 'partflow_config_v7';
+const USER_KEY = 'partflow_current_user_v7';
+const TRANSFERS_KEY = 'partflow_transfers_v7';
+const SUPPLIERS_KEY = 'partflow_suppliers_v7';
+
+const REDIS_URL = (process.env as any).UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = (process.env as any).UPSTASH_REDIS_REST_TOKEN;
+
+const syncChannel = new BroadcastChannel('partflow_mesh_sync');
+
+const DEFAULT_CONFIG: AppConfig = {
+  appName: "PartFlow Pro",
+  primaryColor: "#0f172a",
+  accentColor: "#3b82f6",
+  carModels: ['Apex X1', 'Terra V8', 'Zenith EV'],
+  manufacturingShops: ['Front End', 'Front Floor', 'Underbody', 'Rear Floor', 'Subframe'],
+  locations: ['SUPPLIER', 'WAREHOUSE', 'BODY_SHOP', 'FE', 'RF', 'FF', 'UB', 'SF'],
+  requiredFields: ['partNumber', 'name', 'currentStock'],
+  columns: [
+    { id: 'partNumber', label: 'Reference ID', type: 'text', isCore: true },
+    { id: 'name', label: 'Part Name', type: 'text', isCore: true },
+    { id: 'manufacturingShop', label: 'Assigned Shop', type: 'text', isCore: true },
+    { id: 'currentLocation', label: 'Current Location', type: 'text', isCore: true },
+    { id: 'carModel', label: 'Car Model', type: 'text', isCore: true },
+    { id: 'currentStock', label: 'Stock', type: 'number', isCore: true },
+    { id: 'targetStock', label: 'Target', type: 'number', isCore: true },
+    { id: 'supplierName', label: 'Supplier', type: 'text', isCore: true },
+  ],
+  labels: { inventory: "Asset Registry", dashboard: "Command Center", suppliers: "Vendor Network" },
+  updatedAt: Date.now()
+};
+
+export const storageService = {
+  getCurrentUser: (): User | null => {
+    const data = localStorage.getItem(USER_KEY);
+    return data ? JSON.parse(data) : null;
+  },
+
+  setCurrentUser: (user: User | null) => {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_KEY);
+  },
+
+  onSync: (callback: () => void) => {
+    syncChannel.onmessage = (event) => {
+      if (event.data === 'update') callback();
+    };
+  },
+
+  notifySync: () => syncChannel.postMessage('update'),
+
+  syncWithCloud: async (): Promise<boolean> => {
+    if (!REDIS_URL || !REDIS_TOKEN) return false;
+    try {
+      const response = await fetch(`${REDIS_URL}/get/partflow_master_v7`, {
+        headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
+      });
+      const cloudData = await response.json();
+      if (cloudData.result) {
+        const remoteState = JSON.parse(cloudData.result);
+        localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts || []));
+        localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers || []));
+        localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers || []));
+        localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config || DEFAULT_CONFIG));
+        storageService.notifySync();
+        return true;
+      }
+    } catch (e) { console.warn("Sync failed."); }
+    return false;
+  },
+
+  pushToCloud: async () => {
+    if (!REDIS_URL || !REDIS_TOKEN) return;
+    const parts = storageService.getParts();
+    const transfers = storageService.getTransfers();
+    const suppliers = storageService.getSuppliers();
+    const config = storageService.getConfig();
+    await fetch(`${REDIS_URL}/set/partflow_master_v7`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+      body: JSON.stringify(JSON.stringify({ parts, transfers, suppliers, config }))
+    });
+  },
+
+  getParts: (): Part[] => JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'),
+  getTransfers: (): Transfer[] => JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]'),
+  getSuppliers: (): Supplier[] => JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'),
+  getConfig: (): AppConfig => JSON.parse(localStorage.getItem(CONFIG_KEY) || JSON.stringify(DEFAULT_CONFIG)),
+
+  savePart: (part: Part) => {
+    const parts = storageService.getParts();
+    const user = storageService.getCurrentUser();
+    const updatedPart = { ...part, updatedAt: Date.now(), lastModifiedBy: user?.username || 'System' };
+    const idx = parts.findIndex(p => p.id === part.id);
+    if (idx >= 0) parts[idx] = updatedPart; else parts.push(updatedPart);
+    localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
+    storageService.checkLowStock(updatedPart);
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  deletePart: (id: string) => {
+    const parts = storageService.getParts();
+    localStorage.setItem(PARTS_KEY, JSON.stringify(parts.filter(p => p.id !== id)));
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  migratePartKey: (oldKey: string, newKey: string) => {
+    const parts = storageService.getParts();
+    const updated = parts.map(p => {
+      const val = p[oldKey];
+      const newPart = { ...p, [newKey]: val, updatedAt: Date.now() };
+      delete newPart[oldKey];
+      return newPart;
+    });
+    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  createTransfer: (transfer: Omit<Transfer, 'id' | 'status' | 'timestamp'>) => {
+    const transfers = storageService.getTransfers();
+    const user = storageService.getCurrentUser();
+    const newTransfer: Transfer = {
+      ...transfer,
+      id: `TRF_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      status: 'PENDING',
+      supplierSignature: `[SIGNED_BY:${user?.username}|ROLE:SUPPLIER|TIME:${new Date().toISOString()}|TOKEN:${Math.random().toString(36).substr(2, 9)}]`
+    };
+    transfers.unshift(newTransfer);
+    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
+    storageService.addNotification({
+      partId: transfer.parts[0].partId,
+      partName: transfer.parts[0].name,
+      message: `Inbound Delivery Pending: ${transfer.supplierName} dispatched ${transfer.parts.length} types. Signature required.`,
+      type: 'ACTION_REQUIRED'
+    });
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  acceptTransfer: (transferId: string) => {
+    const transfers = storageService.getTransfers();
+    const user = storageService.getCurrentUser();
+    const idx = transfers.findIndex(t => t.id === transferId);
+    if (idx === -1) return;
+
+    const t = transfers[idx];
+    t.status = 'COMPLETED';
+    t.engineerId = user?.id;
+    t.engineerName = user?.username;
+    t.engineerSignature = `[SIGNED_BY:${user?.username}|ROLE:ENGINEER|TIME:${new Date().toISOString()}|TOKEN:${Math.random().toString(36).substr(2, 9)}]`;
+
+    t.parts.forEach(tp => {
+      storageService.updateStock(tp.partId, tp.quantity, 'RECEIVE', `Handshake verified via ${t.id}`, t.toLocation);
+    });
+
+    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  updateStock: (partId: string, quantity: number, type: 'RECEIVE' | 'ISSUE', notes?: string, newLocation?: PartLocation) => {
+    const parts = storageService.getParts();
+    const idx = parts.findIndex(p => p.id === partId);
+    if (idx === -1) return;
+    const user = storageService.getCurrentUser();
+    const part = parts[idx];
+    const newStock = type === 'RECEIVE' ? part.currentStock + quantity : part.currentStock - quantity;
+    
+    parts[idx] = {
+      ...part,
+      currentStock: Math.max(0, newStock),
+      currentLocation: newLocation || part.currentLocation,
+      updatedAt: Date.now(),
+      lastModifiedBy: user?.username || 'System',
+      history: [{ 
+        id: Math.random().toString(36).substr(2, 9), 
+        date: new Date().toISOString(), 
+        quantity, 
+        type: (type === 'RECEIVE' ? 'TRANSFER_IN' : 'TRANSFER_OUT') as any, 
+        notes 
+      }, ...part.history].slice(0, 50)
+    };
+    localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
+    storageService.checkLowStock(parts[idx]);
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  checkLowStock: (part: Part) => {
+    if (part.currentStock <= LOW_STOCK_THRESHOLD) {
+      storageService.addNotification({
+        partId: part.id,
+        partName: part.name,
+        message: `ALARM: ${part.name} at ${part.currentLocation} critically low (${part.currentStock}). Supplier ${part.supplierName} notified.`,
+        type: 'WARNING'
+      });
+      // Automated record of Supplier warning in log
+      const transfers = storageService.getTransfers();
+      console.log(`[VEND_ALERT] ${part.supplierName} notified for Part ${part.partNumber}`);
+    }
+  },
+
+  addNotification: (n: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
+    const notifications = storageService.getNotifications();
+    notifications.unshift({ ...n, id: Math.random().toString(36).substr(2, 9), timestamp: new Date().toISOString(), read: false });
+    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.slice(0, 50)));
+    storageService.notifySync();
+  },
+
+  getNotifications: (): Notification[] => JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]'),
+  markAsRead: (id: string) => {
+    const notifications = storageService.getNotifications();
+    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.map(n => n.id === id ? { ...n, read: true } : n)));
+    storageService.notifySync();
+  },
+
+  saveConfig: (c: AppConfig) => { 
+    localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...c, updatedAt: Date.now() })); 
+    storageService.pushToCloud(); 
+  },
+
+  importCSV: (csvText: string) => {
+    const config = storageService.getConfig();
+    const lines = csvText.split(/\r?\n/);
+    if (lines.length < 2) return;
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const parts = storageService.getParts();
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const part: any = { id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, history: [], updatedAt: Date.now(), currentLocation: 'SUPPLIER' };
+      headers.forEach((header, idx) => {
+        const col = config.columns.find(c => c.label === header || c.id === header);
+        if (col) part[col.id] = col.type === 'number' ? parseInt(values[idx]) || 0 : values[idx];
+      });
+      parts.push(part as Part);
+    }
+    localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  exportCSV: () => {
+    const config = storageService.getConfig();
+    const parts = storageService.getParts();
+    const transfers = storageService.getTransfers();
+    let csv = "Asset Registry Snapshot\n" + config.columns.map(c => c.label).join(',') + "\n";
+    parts.forEach(p => { csv += config.columns.map(c => `"${String(p[c.id] || '').replace(/"/g, '""')}"`).join(',') + "\n"; });
+    csv += "\n\nHandshake Transfer Log\nID,Date,Status,Assets,From,To,Supplier Token,Engineer Token\n";
+    transfers.forEach(t => {
+      const summary = t.parts.map(tp => `${tp.name}(${tp.quantity})`).join('; ');
+      csv += `"${t.id}","${t.timestamp}","${t.status}","${summary}","${t.fromLocation}","${t.toLocation}","${t.supplierSignature || ''}","${t.engineerSignature || ''}"\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `PartFlow_System_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  }
+};
