@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Part, Notification, ViewType, AppConfig, InventoryDisplayMode, User, Conflict } from './types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Part, Notification, ViewType, AppConfig, InventoryDisplayMode, User } from './types';
 import { storageService } from './services/storageService';
 import { ICONS } from './constants';
 import Dashboard from './components/Dashboard';
@@ -40,13 +40,23 @@ const App: React.FC = () => {
   }, [loadData]);
 
   useEffect(() => {
-    window.addEventListener('online', () => setIsOnline(true));
-    window.addEventListener('offline', () => setIsOnline(false));
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Initial data load and sync
     if (user) {
       loadData();
       triggerCloudSync();
       storageService.onSync(loadData);
     }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [user, loadData, triggerCloudSync]);
 
   if (!user) return <AuthGate config={config} onAuthenticated={(u) => { storageService.setCurrentUser(u); setUser(u); }} />;
@@ -100,6 +110,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <h2 className="text-base lg:text-xl font-black text-slate-800 uppercase tracking-tight">{view}</h2>
             {cloudStatus === 'SYNCING' && <div className="flex items-center gap-2"><div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Mesh Sync Active</span></div>}
+            {!isOnline && <div className="flex items-center gap-2 text-red-500"><div className="w-2 h-2 bg-red-500 rounded-full"></div><span className="text-[9px] font-black uppercase tracking-widest">Offline Mode</span></div>}
           </div>
           <div className="flex gap-4">
              {user.role !== 'SUPPLIER' && <button onClick={() => setShowPartForm(true)} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-black transition-colors shadow-lg">+ New Asset</button>}
