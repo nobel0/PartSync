@@ -8,8 +8,9 @@ const USER_KEY = 'partflow_current_user_v7';
 const TRANSFERS_KEY = 'partflow_transfers_v7';
 const SUPPLIERS_KEY = 'partflow_suppliers_v7';
 
-const REDIS_URL = (process.env as any).UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = (process.env as any).UPSTASH_REDIS_REST_TOKEN;
+// Detect credentials from multiple possible sources (Vite define, Vercel env, etc.)
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_TOKEN;
 
 const syncChannel = new BroadcastChannel('partflow_mesh_sync');
 
@@ -63,23 +64,28 @@ export const storageService = {
   },
 
   syncWithCloud: async (): Promise<boolean> => {
-    if (!REDIS_URL || !REDIS_TOKEN) return false;
+    if (!REDIS_URL || !REDIS_TOKEN) {
+      console.warn("Cloud credentials missing. Running in local-only mode.");
+      return false;
+    }
     try {
       const response = await fetch(`${REDIS_URL}/get/partflow_master_v7`, {
         headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
       });
       const cloudData = await response.json();
-      if (cloudData.result) {
+      
+      if (cloudData && cloudData.result) {
         const remoteState = JSON.parse(cloudData.result);
         if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
         if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
         if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
         if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
+        
         storageService.notifySync();
         return true;
       }
     } catch (e) { 
-      console.error("Cloud Sync Error:", e);
+      console.error("Cloud Sync Failure:", e);
     }
     return false;
   },
@@ -92,13 +98,19 @@ export const storageService = {
       const suppliers = storageService.getSuppliers();
       const config = storageService.getConfig();
       
-      await fetch(`${REDIS_URL}/set/partflow_master_v7`, {
+      const payload = JSON.stringify({ parts, transfers, suppliers, config });
+      
+      const response = await fetch(`${REDIS_URL}/set/partflow_master_v7`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-        body: JSON.stringify(JSON.stringify({ parts, transfers, suppliers, config }))
+        body: payload
       });
+
+      if (!response.ok) {
+        throw new Error(`Cloud save failed with status: ${response.status}`);
+      }
     } catch (e) {
-      console.error("Cloud Push Error:", e);
+      console.error("Critical: Cloud Push Error. Data remains local.", e);
     }
   },
 
@@ -107,14 +119,24 @@ export const storageService = {
   getSuppliers: (): Supplier[] => JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'),
   getConfig: (): AppConfig => {
     const stored = localStorage.getItem(CONFIG_KEY);
-    return stored ? JSON.parse(stored) : DEFAULT_CONFIG;
+    if (!stored) return DEFAULT_CONFIG;
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      return DEFAULT_CONFIG;
+    }
   },
 
   savePart: (part: Part) => {
     const parts = storageService.getParts();
     const user = storageService.getCurrentUser();
-    const updatedPart = { ...part, updatedAt: Date.now(), lastModifiedBy: user?.username || 'System' };
-    const idx = parts.findIndex(p => p.id === part.id);
+    const updatedPart = { 
+      ...part, 
+      id: part.id || `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      updatedAt: Date.now(), 
+      lastModifiedBy: user?.username || 'System' 
+    };
+    const idx = parts.findIndex(p => p.id === updatedPart.id);
     if (idx >= 0) parts[idx] = updatedPart; else parts.push(updatedPart);
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
     storageService.checkLowStock(updatedPart);
@@ -130,38 +152,10 @@ export const storageService = {
     storageService.pushToCloud();
   },
 
-  migratePartKey: (oldKey: string, newKey: string) => {
-    const parts = storageService.getParts();
-    const updated = parts.map(p => {
-      const pObj = p as Record<string, any>;
-      const val = pObj[oldKey];
-      const newPart: any = { ...p, [newKey]: val, updatedAt: Date.now() };
-      delete newPart[oldKey];
-      return newPart as Part;
-    });
-    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
+  saveConfig: (c: AppConfig) => { 
+    localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...c, updatedAt: Date.now() })); 
     storageService.notifySync();
-    storageService.pushToCloud();
-  },
-
-  clearColumnData: (key: string) => {
-    const parts = storageService.getParts();
-    const updated = parts.map(p => {
-      const newPart: any = { ...p, updatedAt: Date.now() };
-      delete newPart[key];
-      return newPart as Part;
-    });
-    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
-    storageService.notifySync();
-    storageService.pushToCloud();
-  },
-
-  wipeAllInventory: () => {
-    localStorage.setItem(PARTS_KEY, JSON.stringify([]));
-    localStorage.setItem(TRANSFERS_KEY, JSON.stringify([]));
-    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify([]));
-    storageService.notifySync();
-    storageService.pushToCloud();
+    storageService.pushToCloud(); 
   },
 
   updateStock: (partId: string, quantity: number, type: 'RECEIVE' | 'ISSUE', notes?: string, newLocation?: PartLocation) => {
@@ -184,7 +178,7 @@ export const storageService = {
         quantity, 
         type: (type === 'RECEIVE' ? 'TRANSFER_IN' : 'TRANSFER_OUT') as any, 
         notes 
-      }, ...part.history].slice(0, 50)
+      }, ...part.history || []].slice(0, 50)
     };
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
     storageService.checkLowStock(parts[idx]);
@@ -214,7 +208,6 @@ export const storageService = {
     
     const user = storageService.getCurrentUser();
     const transfer = transfers[idx];
-    
     if (transfer.status !== 'PENDING') return;
 
     transfers[idx] = {
@@ -260,16 +253,45 @@ export const storageService = {
   },
 
   getNotifications: (): Notification[] => JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]'),
+  
   markAsRead: (id: string) => {
     const notifications = storageService.getNotifications();
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.map(n => n.id === id ? { ...n, read: true } : n)));
     storageService.notifySync();
   },
 
-  saveConfig: (c: AppConfig) => { 
-    localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...c, updatedAt: Date.now() })); 
+  migratePartKey: (oldKey: string, newKey: string) => {
+    const parts = storageService.getParts();
+    const updated = parts.map(p => {
+      const pObj = p as Record<string, any>;
+      const val = pObj[oldKey];
+      const newPart: any = { ...p, [newKey]: val, updatedAt: Date.now() };
+      delete newPart[oldKey];
+      return newPart as Part;
+    });
+    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
     storageService.notifySync();
-    storageService.pushToCloud(); 
+    storageService.pushToCloud();
+  },
+
+  clearColumnData: (key: string) => {
+    const parts = storageService.getParts();
+    const updated = parts.map(p => {
+      const newPart: any = { ...p, updatedAt: Date.now() };
+      delete newPart[key];
+      return newPart as Part;
+    });
+    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  wipeAllInventory: () => {
+    localStorage.setItem(PARTS_KEY, JSON.stringify([]));
+    localStorage.setItem(TRANSFERS_KEY, JSON.stringify([]));
+    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify([]));
+    storageService.notifySync();
+    storageService.pushToCloud();
   },
 
   importCSV: (csvText: string) => {
@@ -281,7 +303,14 @@ export const storageService = {
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
       const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-      const part: any = { id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, history: [], updatedAt: Date.now(), currentLocation: 'SUPPLIER' };
+      const part: any = { 
+        id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
+        history: [], 
+        updatedAt: Date.now(), 
+        currentLocation: 'SUPPLIER',
+        currentStock: 0,
+        targetStock: 0
+      };
       headers.forEach((header, idx) => {
         const col = config.columns.find(c => c.label === header || c.id === header);
         if (col) part[col.id] = col.type === 'number' ? parseInt(values[idx]) || 0 : values[idx];
