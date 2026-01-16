@@ -1,22 +1,18 @@
-import { Part, Notification, AppConfig, ColumnDefinition, User, Conflict, Transfer, Supplier, PartLocation } from '../types';
+import { Part, Notification, AppConfig, User, Transfer, Supplier, PartLocation } from '../types';
 import { LOW_STOCK_THRESHOLD } from '../constants';
 
-const PARTS_KEY = 'partflow_parts_v7';
-const NOTIFICATIONS_KEY = 'partflow_notifications_v7';
-const CONFIG_KEY = 'partflow_config_v7';
-const USER_KEY = 'partflow_current_user_v7';
-const TRANSFERS_KEY = 'partflow_transfers_v7';
-const SUPPLIERS_KEY = 'partflow_suppliers_v7';
+const PARTS_KEY = 'partflow_parts_v8';
+const NOTIFICATIONS_KEY = 'partflow_notifications_v8';
+const CONFIG_KEY = 'partflow_config_v8';
+const USER_KEY = 'partflow_current_user_v8';
+const TRANSFERS_KEY = 'partflow_transfers_v8';
+const SUPPLIERS_KEY = 'partflow_suppliers_v8';
+const DB_CRED_KEY = 'partflow_db_credentials_v8';
 
-// Multi-source credential detection (Vite, Vercel, Process)
-const getEnv = (key: string) => {
-  return (import.meta as any).env?.[`VITE_${key}`] || 
-         (import.meta as any).env?.[key] || 
-         (process as any).env?.[key];
-};
-
-const REDIS_URL = getEnv('UPSTASH_REDIS_REST_URL')?.replace(/\/$/, '');
-const REDIS_TOKEN = getEnv('UPSTASH_REDIS_REST_TOKEN');
+interface DBCredentials {
+  url: string;
+  token: string;
+}
 
 const syncChannel = new BroadcastChannel('partflow_mesh_sync');
 
@@ -46,6 +42,26 @@ const DEFAULT_CONFIG: AppConfig = {
 };
 
 export const storageService = {
+  // --- CREDENTIALS HANDLING ---
+  getDBCredentials: (): DBCredentials | null => {
+    // 1. Check Manual Override in LocalStorage
+    const stored = localStorage.getItem(DB_CRED_KEY);
+    if (stored) return JSON.parse(stored);
+
+    // 2. Check Environment Variables (Vite/Vercel)
+    const envUrl = (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_URL || (process as any).env?.UPSTASH_REDIS_REST_URL;
+    const envToken = (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_TOKEN || (process as any).env?.UPSTASH_REDIS_REST_TOKEN;
+    
+    if (envUrl && envToken) return { url: envUrl.replace(/\/$/, ''), token: envToken };
+    return null;
+  },
+
+  setDBCredentials: (creds: DBCredentials | null) => {
+    if (creds) localStorage.setItem(DB_CRED_KEY, JSON.stringify(creds));
+    else localStorage.removeItem(DB_CRED_KEY);
+  },
+
+  // --- CORE STORAGE ---
   getCurrentUser: (): User | null => {
     const data = localStorage.getItem(USER_KEY);
     return data ? JSON.parse(data) : null;
@@ -66,69 +82,72 @@ export const storageService = {
     syncChannel.postMessage('update');
   },
 
-  syncWithCloud: async (): Promise<boolean> => {
-    if (!REDIS_URL || !REDIS_TOKEN) {
-      console.warn("Cloud credentials missing. Storage is LOCAL ONLY.");
-      return false;
-    }
+  // --- CLOUD ENGINE ---
+  syncWithCloud: async (): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
+    const creds = storageService.getDBCredentials();
+    if (!creds) return { success: true, mode: 'LOCAL' };
+
     try {
-      // Use the standard Redis GET command
-      const response = await fetch(`${REDIS_URL}/get/partflow_master_v7`, {
-        headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
+      const response = await fetch(`${creds.url}/get/partflow_master_v8`, {
+        headers: { Authorization: `Bearer ${creds.token}` }
       });
       const data = await response.json();
       
       if (data && data.result) {
         const remoteState = JSON.parse(data.result);
-        
-        // Safety check: only sync if remote data actually has parts or config
-        if (remoteState.parts || remoteState.config) {
+        const localUpdatedAt = parseInt(localStorage.getItem('partflow_last_updated') || '0');
+        const remoteUpdatedAt = remoteState.lastPushAt || 0;
+
+        // Only sync if remote is newer
+        if (remoteUpdatedAt > localUpdatedAt) {
           if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
           if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
           if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
           if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
-          
+          localStorage.setItem('partflow_last_updated', remoteUpdatedAt.toString());
           storageService.notifySync();
-          console.log("Cloud Sync: Success. State refreshed.");
-          return true;
         }
+        return { success: true, mode: 'CLOUD' };
       }
-      return true; // No data yet, but call succeeded
+      return { success: true, mode: 'CLOUD' }; // Connection ok, just no data yet
     } catch (e) { 
-      console.error("Cloud Sync: Network Error.", e);
-      return false;
+      console.error("Cloud Error:", e);
+      return { success: false, mode: 'LOCAL' };
     }
   },
 
   pushToCloud: async () => {
-    if (!REDIS_URL || !REDIS_TOKEN) return;
+    const creds = storageService.getDBCredentials();
+    if (!creds) return;
+
     try {
-      const parts = storageService.getParts();
-      const transfers = storageService.getTransfers();
-      const suppliers = storageService.getSuppliers();
-      const config = storageService.getConfig();
+      const timestamp = Date.now();
+      const payload = JSON.stringify({
+        parts: storageService.getParts(),
+        transfers: storageService.getTransfers(),
+        suppliers: storageService.getSuppliers(),
+        config: storageService.getConfig(),
+        lastPushAt: timestamp
+      });
       
-      const payload = JSON.stringify({ parts, transfers, suppliers, config, lastPushAt: Date.now() });
-      
-      // Use standard Redis SET command
-      const response = await fetch(`${REDIS_URL}/set/partflow_master_v7`, {
+      const response = await fetch(`${creds.url}/set/partflow_master_v8`, {
         method: 'POST',
         headers: { 
-          Authorization: `Bearer ${REDIS_TOKEN}`,
+          Authorization: `Bearer ${creds.token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        body: payload // Note: We do NOT JSON.stringify the payload again
       });
 
-      if (!response.ok) {
-        throw new Error(`Cloud Push Error: ${response.status}`);
+      if (response.ok) {
+        localStorage.setItem('partflow_last_updated', timestamp.toString());
       }
-      console.log("Cloud Push: Success. Registry updated.");
     } catch (e) {
-      console.error("Cloud Push: Failed. Data remains in local cache.", e);
+      console.error("Cloud Push Failed:", e);
     }
   },
 
+  // --- DOMAIN METHODS ---
   getParts: (): Part[] => JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'),
   getTransfers: (): Transfer[] => JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]'),
   getSuppliers: (): Supplier[] => JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'),

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppConfig, ColumnDefinition } from '../types';
 import { ICONS } from '../constants';
 import { storageService } from '../services/storageService';
@@ -11,17 +11,34 @@ interface AdminPanelProps {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRefresh }) => {
   const [formData, setFormData] = useState<AppConfig>({ ...config });
-  const [activeTab, setActiveTab] = useState<'VISUALS' | 'REGISTRY' | 'COLUMNS' | 'DATA'>('VISUALS');
+  const [activeTab, setActiveTab] = useState<'VISUALS' | 'REGISTRY' | 'COLUMNS' | 'CLOUD' | 'DATA'>('VISUALS');
   const [newItem, setNewItem] = useState('');
   
+  const [dbCreds, setDbCreds] = useState({ url: '', token: '' });
   const [editingColId, setEditingColId] = useState<string | null>(null);
   const [newColLabel, setNewColLabel] = useState('');
   const [newColKey, setNewColKey] = useState('');
   const [newColType, setNewColType] = useState<'text' | 'number'>('text');
 
+  useEffect(() => {
+    const current = storageService.getDBCredentials();
+    if (current) setDbCreds(current);
+  }, []);
+
   const handleSave = () => {
     onSaveConfig(formData);
     alert("✅ System Configuration Updated Successfully");
+  };
+
+  const saveDBCreds = () => {
+    if (!dbCreds.url || !dbCreds.token) {
+      storageService.setDBCredentials(null);
+      alert("Database link cleared.");
+    } else {
+      storageService.setDBCredentials(dbCreds);
+      storageService.pushToCloud();
+      alert("Cloud database linked! Syncing now...");
+    }
   };
 
   const addItem = (type: 'carModels' | 'manufacturingShops') => {
@@ -124,6 +141,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         <TabButton id="VISUALS" label="Appearance" />
         <TabButton id="REGISTRY" label="Taxonomy" />
         <TabButton id="COLUMNS" label="Schema" />
+        <TabButton id="CLOUD" label="Cloud Mesh" />
         <TabButton id="DATA" label="Operations" />
       </div>
 
@@ -173,6 +191,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   </div>
                 </div>
               </div>
+          </div>
+        )}
+
+        {activeTab === 'CLOUD' && (
+          <div className="space-y-8 max-w-2xl">
+            <div className="p-8 bg-blue-50 rounded-[32px] border border-blue-100">
+               <h4 className="text-xl font-black text-blue-900 uppercase">Cloud Database Link</h4>
+               <p className="text-blue-700 text-xs mt-2 font-medium">Link this app to an Upstash Redis database to persist data across Vercel deployments and share it with other users.</p>
+            </div>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Redis REST URL</label>
+                <input 
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" 
+                  placeholder="https://your-db-name.upstash.io" 
+                  value={dbCreds.url} 
+                  onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} 
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">REST Token</label>
+                <input 
+                  type="password"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" 
+                  placeholder="Your-Secure-Token" 
+                  value={dbCreds.token} 
+                  onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} 
+                />
+              </div>
+              <button 
+                onClick={saveDBCreds}
+                className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all"
+              >
+                CONNECT TO MESH DATABASE
+              </button>
+            </div>
           </div>
         )}
 

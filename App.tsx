@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [showPartForm, setShowPartForm] = useState(false);
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [dbMode, setDbMode] = useState<'CLOUD' | 'LOCAL'>('LOCAL');
   const [cloudStatus, setCloudStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
 
   const loadData = useCallback(() => {
@@ -34,7 +35,8 @@ const App: React.FC = () => {
 
   const triggerCloudSync = useCallback(async () => {
     setCloudStatus('SYNCING');
-    const success = await storageService.syncWithCloud();
+    const { success, mode } = await storageService.syncWithCloud();
+    setDbMode(mode);
     setCloudStatus(success ? 'IDLE' : 'ERROR');
     if (success) loadData();
   }, [loadData]);
@@ -46,7 +48,6 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // Initial data load and sync
     if (user) {
       loadData();
       triggerCloudSync();
@@ -109,7 +110,15 @@ const App: React.FC = () => {
         <header className="h-16 lg:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-10 shrink-0">
           <div className="flex items-center gap-4">
             <h2 className="text-base lg:text-xl font-black text-slate-800 uppercase tracking-tight">{view}</h2>
-            {cloudStatus === 'SYNCING' && <div className="flex items-center gap-2"><div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Mesh Sync Active</span></div>}
+            
+            {/* Database Indicator */}
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${dbMode === 'CLOUD' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-amber-50 border-amber-100 text-amber-600'}`}>
+               <div className={`w-1.5 h-1.5 rounded-full ${dbMode === 'CLOUD' ? 'bg-emerald-500' : 'bg-amber-500'} ${cloudStatus === 'SYNCING' ? 'animate-pulse' : ''}`}></div>
+               <span className="text-[9px] font-black uppercase tracking-widest">
+                {cloudStatus === 'SYNCING' ? 'SYNCING...' : dbMode === 'CLOUD' ? 'CLOUD READY' : 'LOCAL ONLY'}
+               </span>
+            </div>
+
             {!isOnline && <div className="flex items-center gap-2 text-red-500"><div className="w-2 h-2 bg-red-500 rounded-full"></div><span className="text-[9px] font-black uppercase tracking-widest">Offline Mode</span></div>}
           </div>
           <div className="flex gap-4">
