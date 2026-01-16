@@ -16,18 +16,22 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
   const [assignedLine, setAssignedLine] = useState(config.manufacturingShops[0]);
   const [challengeTarget, setChallengeTarget] = useState(0);
   const [challengeValue, setChallengeValue] = useState(50);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode === 'CHALLENGE') setChallengeTarget(Math.floor(Math.random() * 80) + 10);
+    setError(null);
   }, [mode]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
 
     const adminEmail = config.adminEmail || 'abdalhady.joharji@gmail.com';
     const adminPass = config.adminPassword || 'admin';
 
     if (mode === 'LOGIN') {
+      // Check for Admin Credentials
       if (email === adminEmail && password === adminPass) {
         onAuthenticated({ 
           id: 'admin_01', 
@@ -38,6 +42,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
         });
         return;
       }
+      
+      // Check for Test Engineer
       if (email === 'engineer@test.com' && password === 'pass123') {
         onAuthenticated({ 
           id: 'eng_01', 
@@ -49,6 +55,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
         return;
       }
 
+      // Generic login logic (could be extended)
       const user: User = { 
         id: Math.random().toString(36).substr(2, 9), 
         username: email.split('@')[0], 
@@ -62,15 +69,11 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
     }
   };
 
-  const loginAsAdmin = () => {
-    const adminEmail = config.adminEmail || 'abdalhady.joharji@gmail.com';
-    onAuthenticated({ 
-      id: 'admin_01', 
-      username: 'System Admin', 
-      email: adminEmail, 
-      role: 'ADMIN', 
-      assignedLine: 'ALL' 
-    });
+  const autofillAdmin = () => {
+    setEmail(config.adminEmail || 'abdalhady.joharji@gmail.com');
+    setMode('LOGIN');
+    // We don't autofill password for security, just prompt the user
+    setError("Admin context detected. Please enter your secure passkey.");
   };
 
   const verifyHuman = () => {
@@ -96,42 +99,22 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
 
       <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden relative border border-white/20">
         <div className="p-10 lg:p-12">
-          <div className="flex flex-col items-center mb-10">
+          <div className="flex flex-col items-center mb-8">
             <div className="w-20 h-20 bg-slate-900 rounded-3xl shadow-xl mb-6 flex items-center justify-center overflow-hidden">
                {config.logoUrl ? <img src={config.logoUrl} className="max-w-[70%] max-h-[70%] object-contain" alt="Logo" /> : <ICONS.Inventory />}
             </div>
-            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">{config.appName}</h1>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-2 text-center">Engineering Identity System</p>
+            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight text-center leading-none">{config.appName}</h1>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-3 text-center">Engineering Authentication</p>
           </div>
 
+          {error && (
+            <div className="mb-6 p-4 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase text-center border border-blue-100">
+              {error}
+            </div>
+          )}
+
           {mode !== 'CHALLENGE' ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="flex flex-col gap-2">
-                 <button type="button" onClick={loginAsAdmin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-lg hover:bg-black transition-all">
-                    ADMIN ACCESS LOGIN
-                 </button>
-              </div>
-
-              <div className="flex items-center gap-4 my-2">
-                <div className="h-[1px] bg-slate-100 flex-1"></div>
-                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">or standard login</span>
-                <div className="h-[1px] bg-slate-100 flex-1"></div>
-              </div>
-
-              {mode === 'SIGNUP' && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Engineer Display Name</label>
-                    <input required className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="e.g. J. Miller" value={username} onChange={e => setUsername(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Primary Assigned Line</label>
-                    <select className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold text-slate-700" value={assignedLine} onChange={e => setAssignedLine(e.target.value)}>
-                      {config.manufacturingShops.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-              )}
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Work Email</label>
                 <input required type="email" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="name@company.com" value={email} onChange={e => setEmail(e.target.value)} />
@@ -141,20 +124,41 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
                 <input required type="password" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
               </div>
 
-              <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-2xl hover:bg-blue-700 transition-all active:scale-95">
-                {mode === 'LOGIN' ? 'AUTHENTICATE USER' : 'INITIALIZE REGISTRATION'}
-              </button>
+              {mode === 'SIGNUP' && (
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Display Name</label>
+                    <input required className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="e.g. J. Miller" value={username} onChange={e => setUsername(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Line Assignment</label>
+                    <select className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold text-slate-700" value={assignedLine} onChange={e => setAssignedLine(e.target.value)}>
+                      {config.manufacturingShops.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 pt-4">
+                <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all active:scale-95">
+                  {mode === 'LOGIN' ? 'AUTHENTICATE SYSTEM' : 'INITIALIZE REGISTRATION'}
+                </button>
+                
+                <button type="button" onClick={autofillAdmin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-lg hover:bg-black transition-all">
+                  ADMIN ACCESS LOGIN
+                </button>
+              </div>
 
               <div className="pt-6 border-t border-slate-100 text-center">
                 <button type="button" onClick={() => setMode(mode === 'LOGIN' ? 'SIGNUP' : 'LOGIN')} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-colors">
-                  {mode === 'LOGIN' ? "Register New Engineer" : "Existing Engineer Login"}
+                  {mode === 'LOGIN' ? "Register New Engineer" : "Back to Login"}
                 </button>
               </div>
             </form>
           ) : (
             <div className="space-y-8 text-center">
               <div>
-                <h3 className="text-xl font-black text-slate-900">Verify Human Engineer</h3>
+                <h3 className="text-xl font-black text-slate-900">Verify Identity</h3>
                 <p className="text-slate-500 text-xs mt-2 font-medium">Align the Vector Signal to authorize access.</p>
               </div>
 

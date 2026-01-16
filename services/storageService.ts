@@ -45,8 +45,11 @@ export const storageService = {
   },
 
   setCurrentUser: (user: User | null) => {
-    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
-    else localStorage.removeItem(USER_KEY);
+    if (user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(USER_KEY);
+    }
   },
 
   onSync: (callback: () => void) => {
@@ -55,7 +58,9 @@ export const storageService = {
     };
   },
 
-  notifySync: () => syncChannel.postMessage('update'),
+  notifySync: () => {
+    syncChannel.postMessage('update');
+  },
 
   syncWithCloud: async (): Promise<boolean> => {
     if (!REDIS_URL || !REDIS_TOKEN) return false;
@@ -66,34 +71,44 @@ export const storageService = {
       const cloudData = await response.json();
       if (cloudData.result) {
         const remoteState = JSON.parse(cloudData.result);
-        localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts || []));
-        localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers || []));
-        localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers || []));
-        localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config || DEFAULT_CONFIG));
+        if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
+        if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
+        if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
+        if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
         storageService.notifySync();
         return true;
       }
-    } catch (e) { console.warn("Sync failed."); }
+    } catch (e) { 
+      console.error("Cloud Sync Error:", e);
+    }
     return false;
   },
 
   pushToCloud: async () => {
     if (!REDIS_URL || !REDIS_TOKEN) return;
-    const parts = storageService.getParts();
-    const transfers = storageService.getTransfers();
-    const suppliers = storageService.getSuppliers();
-    const config = storageService.getConfig();
-    await fetch(`${REDIS_URL}/set/partflow_master_v7`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-      body: JSON.stringify(JSON.stringify({ parts, transfers, suppliers, config }))
-    });
+    try {
+      const parts = storageService.getParts();
+      const transfers = storageService.getTransfers();
+      const suppliers = storageService.getSuppliers();
+      const config = storageService.getConfig();
+      
+      await fetch(`${REDIS_URL}/set/partflow_master_v7`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+        body: JSON.stringify(JSON.stringify({ parts, transfers, suppliers, config }))
+      });
+    } catch (e) {
+      console.error("Cloud Push Error:", e);
+    }
   },
 
   getParts: (): Part[] => JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'),
   getTransfers: (): Transfer[] => JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]'),
   getSuppliers: (): Supplier[] => JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'),
-  getConfig: (): AppConfig => JSON.parse(localStorage.getItem(CONFIG_KEY) || JSON.stringify(DEFAULT_CONFIG)),
+  getConfig: (): AppConfig => {
+    const stored = localStorage.getItem(CONFIG_KEY);
+    return stored ? JSON.parse(stored) : DEFAULT_CONFIG;
+  },
 
   savePart: (part: Part) => {
     const parts = storageService.getParts();
@@ -109,7 +124,8 @@ export const storageService = {
 
   deletePart: (id: string) => {
     const parts = storageService.getParts();
-    localStorage.setItem(PARTS_KEY, JSON.stringify(parts.filter(p => p.id !== id)));
+    const updated = parts.filter(p => p.id !== id);
+    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
     storageService.notifySync();
     storageService.pushToCloud();
   },
