@@ -13,7 +13,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [assignedLine, setAssignedLine] = useState(config.manufacturingShops[0]);
+  const [assignedLine, setAssignedLine] = useState(config.manufacturingShops[0] || 'ALL');
   const [challengeTarget, setChallengeTarget] = useState(0);
   const [challengeValue, setChallengeValue] = useState(50);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +32,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
 
     if (mode === 'LOGIN') {
       // Check for Admin Credentials
-      if (email === adminEmail && password === adminPass) {
+      if (email.toLowerCase().trim() === adminEmail.toLowerCase().trim() && password === adminPass) {
         onAuthenticated({ 
           id: 'admin_01', 
           username: 'System Admin', 
@@ -50,42 +50,38 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
           username: 'Test Engineer', 
           email: 'engineer@test.com', 
           role: 'ENGINEER', 
-          assignedLine: config.manufacturingShops[0] 
+          assignedLine: config.manufacturingShops[0] || 'ALL'
         });
         return;
       }
 
-      // Generic login logic (could be extended)
-      const user: User = { 
+      // Generic login logic
+      onAuthenticated({ 
         id: Math.random().toString(36).substr(2, 9), 
         username: email.split('@')[0], 
         email, 
         role: 'ENGINEER', 
-        assignedLine: config.manufacturingShops[0] 
-      };
-      onAuthenticated(user);
+        assignedLine: config.manufacturingShops[0] || 'ALL'
+      });
     } else {
       setMode('CHALLENGE');
     }
   };
 
-  const autofillAdmin = () => {
-    setEmail(config.adminEmail || 'abdalhady.joharji@gmail.com');
+  const switchToAdminMode = () => {
     setMode('LOGIN');
-    // We don't autofill password for security, just prompt the user
-    setError("Admin context detected. Please enter your secure passkey.");
+    setError("Administrator mode activated. Enter secure credentials.");
   };
 
   const verifyHuman = () => {
     if (Math.abs(challengeValue - challengeTarget) < 5) {
-      const user: User = { 
+      onAuthenticated({ 
         id: Math.random().toString(36).substr(2, 9), 
-        username, 
+        username: username || email.split('@')[0], 
         email, 
         role: 'ENGINEER', 
         assignedLine 
-      };
-      onAuthenticated(user);
+      });
     } else {
       alert("Vector Alignment Error. Please align the sync pulse precisely.");
     }
@@ -116,8 +112,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
           {mode !== 'CHALLENGE' ? (
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Work Email</label>
-                <input required type="email" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="name@company.com" value={email} onChange={e => setEmail(e.target.value)} />
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Identity Identifier (Email)</label>
+                <input required type="email" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="engineer@domain.com" value={email} onChange={e => setEmail(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Secure Passkey</label>
@@ -127,11 +123,11 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
               {mode === 'SIGNUP' && (
                 <div className="space-y-4 pt-2">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Display Name</label>
-                    <input required className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="e.g. J. Miller" value={username} onChange={e => setUsername(e.target.value)} />
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Official Name</label>
+                    <input required className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold" placeholder="e.g. John Doe" value={username} onChange={e => setUsername(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Line Assignment</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Shop/Line Assignment</label>
                     <select className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-50 transition-all font-bold text-slate-700" value={assignedLine} onChange={e => setAssignedLine(e.target.value)}>
                       {config.manufacturingShops.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
@@ -144,22 +140,22 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
                   {mode === 'LOGIN' ? 'AUTHENTICATE SYSTEM' : 'INITIALIZE REGISTRATION'}
                 </button>
                 
-                <button type="button" onClick={autofillAdmin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-lg hover:bg-black transition-all">
-                  ADMIN ACCESS LOGIN
+                <button type="button" onClick={switchToAdminMode} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-lg hover:bg-black transition-all">
+                  ADMIN ACCESS PORTAL
                 </button>
               </div>
 
               <div className="pt-6 border-t border-slate-100 text-center">
                 <button type="button" onClick={() => setMode(mode === 'LOGIN' ? 'SIGNUP' : 'LOGIN')} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-colors">
-                  {mode === 'LOGIN' ? "Register New Engineer" : "Back to Login"}
+                  {mode === 'LOGIN' ? "New Personnel Registration" : "Return to Login"}
                 </button>
               </div>
             </form>
           ) : (
             <div className="space-y-8 text-center">
               <div>
-                <h3 className="text-xl font-black text-slate-900">Verify Identity</h3>
-                <p className="text-slate-500 text-xs mt-2 font-medium">Align the Vector Signal to authorize access.</p>
+                <h3 className="text-xl font-black text-slate-900">Vector Synchronization</h3>
+                <p className="text-slate-500 text-xs mt-2 font-medium">Verify your human identity by aligning the sync pulse.</p>
               </div>
 
               <div className="relative h-24 bg-slate-50 rounded-2xl border border-slate-200 flex items-center px-6 overflow-hidden">
@@ -173,8 +169,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
               <input type="range" min="0" max="100" value={challengeValue} onChange={e => setChallengeValue(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-slate-900" />
 
               <div className="flex flex-col gap-3">
-                 <button onClick={verifyHuman} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl hover:bg-blue-700">AUTHORIZE VECTOR-SYNC</button>
-                 <button onClick={() => setMode('SIGNUP')} className="py-2 text-slate-400 font-bold text-xs uppercase">Restart</button>
+                 <button onClick={verifyHuman} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl hover:bg-blue-700">AUTHORIZE MESH ACCESS</button>
+                 <button onClick={() => setMode('SIGNUP')} className="py-2 text-slate-400 font-bold text-xs uppercase">Reset Challenge</button>
               </div>
             </div>
           )}

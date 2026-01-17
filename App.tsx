@@ -27,13 +27,12 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
 
   const loadData = useCallback(() => {
-    setParts(storageService.getParts());
-    setNotifications(storageService.getNotifications());
     const currentConfig = storageService.getConfig();
     setConfig(currentConfig);
+    setParts(storageService.getParts());
+    setNotifications(storageService.getNotifications());
     document.documentElement.style.setProperty('--primary-color', currentConfig.primaryColor);
     
-    // Also update dbMode based on current credentials
     const creds = storageService.getDBCredentials();
     setDbMode(creds ? 'CLOUD' : 'LOCAL');
   }, []);
@@ -53,8 +52,6 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // INITIALIZATION SEQUENCE: Sync cloud BEFORE anything else
-    // This ensures the login screen has the latest config/admin creds
     const init = async () => {
       await triggerCloudSync();
       setIsInitializing(false);
@@ -73,7 +70,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Establishing Mesh Link...</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Initializing Mesh Protocol...</p>
       </div>
     );
   }
