@@ -16,39 +16,21 @@ interface DBCredentials {
   token: string;
 }
 
-const syncChannel = new BroadcastChannel('partflow_mesh_sync');
+interface CloudLog {
+  timestamp: number;
+  type: 'PUSH' | 'PULL' | 'TEST';
+  status: 'SUCCESS' | 'ERROR';
+  message: string;
+}
 
-const DEFAULT_CONFIG: AppConfig = {
-  appName: "PartFlow Pro",
-  logoUrl: "https://cdn-icons-png.flaticon.com/512/2897/2897785.png",
-  primaryColor: "#0f172a",
-  accentColor: "#3b82f6",
-  carModels: ['Apex X1', 'Terra V8', 'Zenith EV'],
-  manufacturingShops: ['Front End', 'Front Floor', 'Underbody', 'Rear Floor', 'Subframe'],
-  locations: ['SUPPLIER', 'WAREHOUSE', 'BODY_SHOP', 'FE', 'RF', 'FF', 'UB', 'SF'],
-  requiredFields: ['partNumber', 'name', 'currentStock'],
-  columns: [
-    { id: 'partNumber', label: 'Reference ID', type: 'text', isCore: true },
-    { id: 'name', label: 'Part Name', type: 'text', isCore: true },
-    { id: 'manufacturingShop', label: 'Assigned Shop', type: 'text', isCore: true },
-    { id: 'currentLocation', label: 'Current Location', type: 'text', isCore: true },
-    { id: 'carModel', label: 'Car Model', type: 'text', isCore: true },
-    { id: 'currentStock', label: 'Stock', type: 'number', isCore: true },
-    { id: 'targetStock', label: 'Target', type: 'number', isCore: true },
-    { id: 'supplierName', label: 'Supplier', type: 'text', isCore: true },
-  ],
-  labels: { inventory: "Asset Registry", dashboard: "Command Center", suppliers: "Vendor Network" },
-  adminEmail: "abdalhady.joharji@gmail.com",
-  adminPassword: "admin",
-  updatedAt: Date.now()
-};
+const syncChannel = new BroadcastChannel('partflow_mesh_sync');
+let sessionLogs: CloudLog[] = [];
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
     const stored = localStorage.getItem(DB_CRED_KEY);
     if (stored) return JSON.parse(stored);
     
-    // Fallback to env variables if available
     const envUrl = (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_URL || (process as any).env?.UPSTASH_REDIS_REST_URL;
     const envToken = (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_TOKEN || (process as any).env?.UPSTASH_REDIS_REST_TOKEN;
     
@@ -59,13 +41,35 @@ export const storageService = {
   setDBCredentials: (creds: DBCredentials | null) => {
     if (creds) {
       localStorage.setItem(DB_CRED_KEY, JSON.stringify({
-        url: creds.url.replace(/\/$/, ''), // Sanitize URL
-        token: creds.token
+        url: creds.url.trim().replace(/\/$/, ''), // Strip trailing slashes
+        token: creds.token.trim()
       }));
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
     storageService.notifySync();
+  },
+
+  testConnection: async (): Promise<{ success: boolean; message: string }> => {
+    const creds = storageService.getDBCredentials();
+    if (!creds) return { success: false, message: "No credentials configured." };
+
+    try {
+      // Test 1: PING (Basic connectivity)
+      const pingResponse = await fetch(`${creds.url}/ping`, {
+        headers: { Authorization: `Bearer ${creds.token}` }
+      });
+      
+      if (pingResponse.status === 401) return { success: false, message: "Unauthorized: Invalid REST Token." };
+      if (!pingResponse.ok) return { success: false, message: `Server error: ${pingResponse.status}` };
+      
+      const pingData = await pingResponse.json();
+      if (pingData.result !== "PONG") return { success: false, message: "Malformed response from server." };
+
+      return { success: true, message: "Link Stable. Bi-directional communication active." };
+    } catch (e) {
+      return { success: false, message: `Network error: ${e instanceof Error ? e.message : 'Unknown'}` };
+    }
   },
 
   getCurrentUser: (): User | null => {
@@ -84,6 +88,8 @@ export const storageService = {
 
   notifySync: () => { syncChannel.postMessage('update'); },
 
+  getSessionLogs: () => sessionLogs,
+
   syncWithCloud: async (): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
     const creds = storageService.getDBCredentials();
     if (!creds) return { success: true, mode: 'LOCAL' };
@@ -93,7 +99,7 @@ export const storageService = {
         headers: { Authorization: `Bearer ${creds.token}` }
       });
       
-      if (!response.ok) throw new Error("Connection failed");
+      if (!response.ok) throw new Error(`Cloud connection failed (${response.status})`);
       
       const data = await response.json();
       
@@ -102,7 +108,6 @@ export const storageService = {
         const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
         const remoteUpdatedAt = remoteState.lastPushAt || 0;
 
-        // Force pull if this is a fresh device (local=0) or cloud has newer info
         if (remoteUpdatedAt > 0 && (localUpdatedAt === 0 || remoteUpdatedAt > localUpdatedAt)) {
           if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
           if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
@@ -110,13 +115,13 @@ export const storageService = {
           if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
           localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
           storageService.notifySync();
-          console.log("Cloud Mesh: Registry Synchronized.");
+          sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: 'Registry Pull Complete' });
         }
         return { success: true, mode: 'CLOUD' };
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
-      console.error("Cloud Mesh Pull Failure:", e);
+      sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'ERROR', message: String(e) });
       return { success: false, mode: 'LOCAL' };
     }
   },
@@ -135,27 +140,24 @@ export const storageService = {
         lastPushAt: timestamp
       };
       
-      const stringifiedPayload = JSON.stringify(payload);
-      
-      // Use standard Command Array POST / for maximum reliability
       const response = await fetch(`${creds.url}/`, {
         method: 'POST',
         headers: { 
           Authorization: `Bearer ${creds.token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(["SET", MASTER_DB_KEY, stringifiedPayload])
+        body: JSON.stringify(["SET", MASTER_DB_KEY, JSON.stringify(payload)])
       });
 
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
-        console.log("Cloud Mesh: Push Success @", timestamp);
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Modifications Saved to Cloud' });
       } else {
         const errData = await response.json();
-        console.error("Cloud Mesh Push Rejected:", errData);
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: errData.error || 'Server rejected push' });
       }
     } catch (e) {
-      console.error("Cloud Mesh Push Error:", e);
+      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Network Timeout' });
     }
   },
 
@@ -164,8 +166,32 @@ export const storageService = {
   getSuppliers: (): Supplier[] => JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'),
   getConfig: (): AppConfig => {
     const stored = localStorage.getItem(CONFIG_KEY);
-    if (!stored) return DEFAULT_CONFIG;
-    try { return JSON.parse(stored); } catch (e) { return DEFAULT_CONFIG; }
+    const defaultConf: AppConfig = {
+      appName: "PartFlow Pro",
+      logoUrl: "https://cdn-icons-png.flaticon.com/512/2897/2897785.png",
+      primaryColor: "#0f172a",
+      accentColor: "#3b82f6",
+      carModels: ['Apex X1', 'Terra V8', 'Zenith EV'],
+      manufacturingShops: ['Front End', 'Front Floor', 'Underbody', 'Rear Floor', 'Subframe'],
+      locations: ['SUPPLIER', 'WAREHOUSE', 'BODY_SHOP', 'FE', 'RF', 'FF', 'UB', 'SF'],
+      requiredFields: ['partNumber', 'name', 'currentStock'],
+      columns: [
+        { id: 'partNumber', label: 'Reference ID', type: 'text', isCore: true },
+        { id: 'name', label: 'Part Name', type: 'text', isCore: true },
+        { id: 'manufacturingShop', label: 'Assigned Shop', type: 'text', isCore: true },
+        { id: 'currentLocation', label: 'Current Location', type: 'text', isCore: true },
+        { id: 'carModel', label: 'Car Model', type: 'text', isCore: true },
+        { id: 'currentStock', label: 'Stock', type: 'number', isCore: true },
+        { id: 'targetStock', label: 'Target', type: 'number', isCore: true },
+        { id: 'supplierName', label: 'Supplier', type: 'text', isCore: true },
+      ],
+      labels: { inventory: "Asset Registry", dashboard: "Command Center", suppliers: "Vendor Network" },
+      adminEmail: "abdalhady.joharji@gmail.com",
+      adminPassword: "admin",
+      updatedAt: Date.now()
+    };
+    if (!stored) return defaultConf;
+    try { return JSON.parse(stored); } catch (e) { return defaultConf; }
   },
 
   savePart: (part: Part) => {
