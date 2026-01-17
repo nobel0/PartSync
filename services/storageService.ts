@@ -10,6 +10,7 @@ const SUPPLIERS_KEY = 'partflow_suppliers_v10';
 const DB_CRED_KEY = 'partflow_db_credentials_v10';
 const LAST_SYNC_KEY = 'partflow_last_updated_v10';
 const MASTER_DB_KEY = 'partflow_master_v10';
+const HEALTH_KEY = 'partflow_health_check';
 
 interface DBCredentials {
   url: string;
@@ -18,7 +19,7 @@ interface DBCredentials {
 
 interface CloudLog {
   timestamp: number;
-  type: 'PUSH' | 'PULL' | 'TEST';
+  type: 'PUSH' | 'PULL' | 'TEST' | 'ERROR';
   status: 'SUCCESS' | 'ERROR';
   message: string;
 }
@@ -58,21 +59,34 @@ export const storageService = {
 
   testConnection: async (): Promise<{ success: boolean; message: string }> => {
     const creds = storageService.getDBCredentials();
-    if (!creds) return { success: false, message: "Cloud credentials not found in environment or local storage." };
+    if (!creds) return { success: false, message: "Credentials missing. Check Environment Variables." };
 
     try {
-      const response = await fetch(`${creds.url}/ping`, {
+      const testVal = `HEALTH_OK_${Date.now()}`;
+      
+      // Phase 1: Write Test
+      const writeResponse = await fetch(`${creds.url}/`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(["SET", HEALTH_KEY, testVal])
+      });
+
+      if (writeResponse.status === 401) return { success: false, message: "Unauthorized: Invalid REST Token." };
+      if (!writeResponse.ok) return { success: false, message: `Server Error: HTTP ${writeResponse.status}` };
+
+      // Phase 2: Read-back Verification
+      const readResponse = await fetch(`${creds.url}/get/${HEALTH_KEY}`, {
         headers: { Authorization: `Bearer ${creds.token}` }
       });
       
-      if (response.status === 401) return { success: false, message: "401 Unauthorized: Check your REST Token." };
-      if (!response.ok) return { success: false, message: `Connection failed: HTTP ${response.status}` };
+      const readData = await readResponse.json();
+      if (readData.result === testVal) {
+        return { success: true, message: "Bi-directional verification successful. Write/Read access confirmed." };
+      }
       
-      const data = await response.json();
-      if (data.result === "PONG") return { success: true, message: "Cloud link established. Bi-directional sync active." };
-      return { success: false, message: "Unexpected response from Upstash." };
+      return { success: false, message: "Data integrity mismatch during verification." };
     } catch (e) {
-      return { success: false, message: `Network Error: Could not reach Upstash URL.` };
+      return { success: false, message: `Network Failure: Check if Upstash URL is reachable.` };
     }
   },
 
@@ -103,7 +117,7 @@ export const storageService = {
         headers: { Authorization: `Bearer ${creds.token}` }
       });
       
-      if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+      if (!response.ok) throw new Error(`Pull failed: HTTP ${response.status}`);
       
       const data = await response.json();
       if (data && data.result) {
@@ -142,26 +156,29 @@ export const storageService = {
         lastPushAt: timestamp
       };
       
+      const serialized = JSON.stringify(payload);
+      const payloadSize = new Blob([serialized]).size;
+
       const response = await fetch(`${creds.url}/`, {
         method: 'POST',
         headers: { 
           Authorization: `Bearer ${creds.token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(["SET", MASTER_DB_KEY, JSON.stringify(payload)])
+        body: JSON.stringify(["SET", MASTER_DB_KEY, serialized])
       });
 
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'State Committed to Cloud' });
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: `Cloud Comitted (${(payloadSize/1024).toFixed(1)} KB)` });
         return true;
       } else {
         const err = await response.json();
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Cloud Rejected: ${err.error || response.status}` });
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Redis rejected: ${err.error || response.status}` });
         return false;
       }
     } catch (e) {
-      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Push Failed: Check Internet Connection' });
+      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Network Sync Error' });
       return false;
     }
   },
@@ -282,7 +299,7 @@ export const storageService = {
     if (transfer.status !== 'PENDING') return;
     transfers[idx] = { ...transfer, status: 'COMPLETED', engineerId: user?.id, engineerName: user?.username, engineerSignature: `SIG_${Math.random().toString(36).substr(2, 8).toUpperCase()}` };
     localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
-    await transfer.parts.forEach(p => { storageService.updateStock(p.partId, p.quantity, 'RECEIVE', `Transfer from ${transfer.fromLocation}`, transfer.toLocation); });
+    transfer.parts.forEach(p => { storageService.updateStock(p.partId, p.quantity, 'RECEIVE', `Transfer from ${transfer.fromLocation}`, transfer.toLocation); });
     storageService.notifySync();
     await storageService.pushToCloud();
   },
