@@ -70,7 +70,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Initializing Mesh Protocol...</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] animate-pulse text-blue-500">Establishing Cloud Mesh Link...</p>
       </div>
     );
   }
@@ -78,6 +78,22 @@ const App: React.FC = () => {
   if (!user) return <AuthGate config={config} onAuthenticated={(u) => { storageService.setCurrentUser(u); setUser(u); }} />;
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const handleSavePart = async (p: Part) => {
+    setCloudStatus('SYNCING');
+    await storageService.savePart(p);
+    loadData();
+    setShowPartForm(false);
+    setEditingPart(null);
+    setCloudStatus('IDLE');
+  };
+
+  const handleUpdateStock = async (id: string, qty: number, type: 'RECEIVE' | 'ISSUE') => {
+    setCloudStatus('SYNCING');
+    await storageService.updateStock(id, qty, type);
+    loadData();
+    setCloudStatus('IDLE');
+  };
 
   const NavItem = ({ id, label, icon: Icon, badge }: { id: ViewType, label: string, icon: any, badge?: number }) => (
     <button onClick={() => setView(id)} className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all relative ${view === id ? 'bg-[var(--primary-color)] text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50'}`}>
@@ -149,7 +165,7 @@ const App: React.FC = () => {
                   <button onClick={() => setDisplayMode('GRID')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'GRID' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>GRID VIEW</button>
                   <button onClick={() => setDisplayMode('SHEET')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'SHEET' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>SHEET VIEW</button>
                 </div>
-              {displayMode === 'GRID' ? <Inventory user={user} parts={parts} config={config} onReceive={(id, qty) => { storageService.updateStock(id, qty, 'RECEIVE'); loadData(); }} onEdit={setEditingPart} /> : <InventorySheet user={user} parts={parts} config={config} onEdit={setEditingPart} onReceive={(id, qty) => { storageService.updateStock(id, qty, 'RECEIVE'); loadData(); }} onDataRefresh={loadData} />}
+              {displayMode === 'GRID' ? <Inventory user={user} parts={parts} config={config} onReceive={(id, qty) => handleUpdateStock(id, qty, 'RECEIVE')} onEdit={setEditingPart} /> : <InventorySheet user={user} parts={parts} config={config} onEdit={setEditingPart} onReceive={(id, qty) => handleUpdateStock(id, qty, 'RECEIVE')} onDataRefresh={loadData} />}
             </div>
           )}
           {view === 'TRANSFERS' && <Transfers user={user} parts={parts} onTransferComplete={loadData} />}
@@ -161,7 +177,7 @@ const App: React.FC = () => {
         {(showPartForm || editingPart) && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
             <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-5xl h-full max-h-[92vh] overflow-hidden flex flex-col">
-               <PartForm config={config} onClose={() => { setShowPartForm(false); setEditingPart(null); }} onSave={(p) => { storageService.savePart(p); loadData(); setShowPartForm(false); setEditingPart(null); }} initialData={editingPart || undefined} />
+               <PartForm config={config} onClose={() => { setShowPartForm(false); setEditingPart(null); }} onSave={handleSavePart} initialData={editingPart || undefined} />
             </div>
           </div>
         )}
