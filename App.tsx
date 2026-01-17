@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [dbMode, setDbMode] = useState<'CLOUD' | 'LOCAL'>('LOCAL');
   const [cloudStatus, setCloudStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const loadData = useCallback(() => {
     setParts(storageService.getParts());
@@ -31,6 +32,10 @@ const App: React.FC = () => {
     const currentConfig = storageService.getConfig();
     setConfig(currentConfig);
     document.documentElement.style.setProperty('--primary-color', currentConfig.primaryColor);
+    
+    // Also update dbMode based on current credentials
+    const creds = storageService.getDBCredentials();
+    setDbMode(creds ? 'CLOUD' : 'LOCAL');
   }, []);
 
   const triggerCloudSync = useCallback(async () => {
@@ -38,7 +43,7 @@ const App: React.FC = () => {
     const { success, mode } = await storageService.syncWithCloud();
     setDbMode(mode);
     setCloudStatus(success ? 'IDLE' : 'ERROR');
-    if (success) loadData();
+    loadData();
   }, [loadData]);
 
   useEffect(() => {
@@ -48,17 +53,30 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    if (user) {
-      loadData();
-      triggerCloudSync();
-      storageService.onSync(loadData);
-    }
+    // INITIALIZATION SEQUENCE: Sync cloud BEFORE anything else
+    // This ensures the login screen has the latest config/admin creds
+    const init = async () => {
+      await triggerCloudSync();
+      setIsInitializing(false);
+    };
+    init();
+
+    storageService.onSync(loadData);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [user, loadData, triggerCloudSync]);
+  }, [loadData, triggerCloudSync]);
+
+  if (isInitializing) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Establishing Mesh Link...</p>
+      </div>
+    );
+  }
 
   if (!user) return <AuthGate config={config} onAuthenticated={(u) => { storageService.setCurrentUser(u); setUser(u); }} />;
 

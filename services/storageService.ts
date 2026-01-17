@@ -1,14 +1,15 @@
+
 import { Part, Notification, AppConfig, User, Transfer, Supplier, PartLocation } from '../types';
 import { LOW_STOCK_THRESHOLD } from '../constants';
 
-const PARTS_KEY = 'partflow_parts_v8';
-const NOTIFICATIONS_KEY = 'partflow_notifications_v8';
-const CONFIG_KEY = 'partflow_config_v8';
-const USER_KEY = 'partflow_current_user_v8';
-const TRANSFERS_KEY = 'partflow_transfers_v8';
-const SUPPLIERS_KEY = 'partflow_suppliers_v8';
-const DB_CRED_KEY = 'partflow_db_credentials_v8';
-const LAST_SYNC_KEY = 'partflow_last_updated_v8';
+const PARTS_KEY = 'partflow_parts_v9';
+const NOTIFICATIONS_KEY = 'partflow_notifications_v9';
+const CONFIG_KEY = 'partflow_config_v9';
+const USER_KEY = 'partflow_current_user_v9';
+const TRANSFERS_KEY = 'partflow_transfers_v9';
+const SUPPLIERS_KEY = 'partflow_suppliers_v9';
+const DB_CRED_KEY = 'partflow_db_credentials_v9';
+const LAST_SYNC_KEY = 'partflow_last_updated_v9';
 
 interface DBCredentials {
   url: string;
@@ -55,6 +56,7 @@ export const storageService = {
   setDBCredentials: (creds: DBCredentials | null) => {
     if (creds) localStorage.setItem(DB_CRED_KEY, JSON.stringify(creds));
     else localStorage.removeItem(DB_CRED_KEY);
+    storageService.notifySync(); // Trigger UI to update status
   },
 
   getCurrentUser: (): User | null => {
@@ -78,7 +80,7 @@ export const storageService = {
     if (!creds) return { success: true, mode: 'LOCAL' };
 
     try {
-      const response = await fetch(`${creds.url}/get/partflow_master_v8`, {
+      const response = await fetch(`${creds.url}/get/partflow_master_v9`, {
         headers: { Authorization: `Bearer ${creds.token}` }
       });
       const data = await response.json();
@@ -88,21 +90,21 @@ export const storageService = {
         const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
         const remoteUpdatedAt = remoteState.lastPushAt || 0;
 
-        // Force sync if local is 0 (new device) or remote is strictly newer
-        if (localUpdatedAt === 0 || remoteUpdatedAt > localUpdatedAt) {
+        // Force pull if remote has data and (we are new OR remote is strictly newer)
+        if (remoteUpdatedAt > 0 && (localUpdatedAt === 0 || remoteUpdatedAt > localUpdatedAt)) {
           if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
           if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
           if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
           if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
           localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
           storageService.notifySync();
-          console.log("Cloud Pull: Success. Registry Updated.");
+          console.log("Cloud Mesh Sync: Data Retrieved.");
         }
         return { success: true, mode: 'CLOUD' };
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
-      console.error("Cloud Pull Error:", e);
+      console.error("Cloud Mesh Sync Error:", e);
       return { success: false, mode: 'LOCAL' };
     }
   },
@@ -121,24 +123,20 @@ export const storageService = {
         lastPushAt: timestamp
       });
       
-      // Use the absolute most reliable POST / [SET, key, val] format
       const response = await fetch(`${creds.url}/`, {
         method: 'POST',
         headers: { 
           Authorization: `Bearer ${creds.token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(["SET", "partflow_master_v8", payload])
+        body: JSON.stringify(["SET", "partflow_master_v9", payload])
       });
 
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
-        console.log("Cloud Push: Success.");
-      } else {
-        console.error("Cloud Push Failed with status:", response.status);
       }
     } catch (e) {
-      console.error("Cloud Push Error:", e);
+      console.error("Cloud Mesh Push Error:", e);
     }
   },
 
@@ -259,36 +257,39 @@ export const storageService = {
     storageService.notifySync();
   },
 
-  migratePartKey: (oldKey: string, newKey: string) => {
-    const parts = storageService.getParts();
-    const updated = parts.map(p => {
-      const pObj = p as Record<string, any>;
-      const val = pObj[oldKey];
-      const newPart: any = { ...p, [newKey]: val, updatedAt: Date.now() };
-      delete newPart[oldKey];
-      return newPart as Part;
-    });
-    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
-    storageService.notifySync();
-    storageService.pushToCloud();
-  },
-
-  clearColumnData: (key: string) => {
-    const parts = storageService.getParts();
-    const updated = parts.map(p => {
-      const newPart: any = { ...p, updatedAt: Date.now() };
-      delete newPart[key];
-      return newPart as Part;
-    });
-    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
-    storageService.notifySync();
-    storageService.pushToCloud();
-  },
-
   wipeAllInventory: () => {
     localStorage.setItem(PARTS_KEY, JSON.stringify([]));
     localStorage.setItem(TRANSFERS_KEY, JSON.stringify([]));
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify([]));
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  // Fix: Adding migratePartKey method for schema migration
+  migratePartKey: (oldKey: string, newKey: string) => {
+    const parts = storageService.getParts();
+    const updatedParts = parts.map(part => {
+      const newPart = { ...part };
+      if (oldKey in newPart) {
+        newPart[newKey] = newPart[oldKey];
+        delete newPart[oldKey];
+      }
+      return newPart;
+    });
+    localStorage.setItem(PARTS_KEY, JSON.stringify(updatedParts));
+    storageService.notifySync();
+    storageService.pushToCloud();
+  },
+
+  // Fix: Adding clearColumnData method to wipe data for a specific schema key
+  clearColumnData: (id: string) => {
+    const parts = storageService.getParts();
+    const updatedParts = parts.map(part => {
+      const newPart = { ...part };
+      delete newPart[id];
+      return newPart;
+    });
+    localStorage.setItem(PARTS_KEY, JSON.stringify(updatedParts));
     storageService.notifySync();
     storageService.pushToCloud();
   },
