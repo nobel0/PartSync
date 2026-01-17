@@ -13,6 +13,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   const [formData, setFormData] = useState<AppConfig>({ ...config });
   const [activeTab, setActiveTab] = useState<'VISUALS' | 'REGISTRY' | 'COLUMNS' | 'CLOUD' | 'DATA'>('VISUALS');
   const [newItem, setNewItem] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const [dbCreds, setDbCreds] = useState({ url: '', token: '' });
   const [editingColId, setEditingColId] = useState<string | null>(null);
@@ -30,15 +31,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     alert("✅ System Configuration Updated Successfully");
   };
 
-  const saveDBCreds = () => {
+  const saveDBCreds = async () => {
     if (!dbCreds.url || !dbCreds.token) {
       storageService.setDBCredentials(null);
       alert("Database link cleared.");
-    } else {
-      storageService.setDBCredentials(dbCreds);
-      storageService.pushToCloud();
-      alert("Cloud database linked! Syncing now...");
+      return;
     }
+    
+    setIsSyncing(true);
+    storageService.setDBCredentials(dbCreds);
+    
+    // MANDATORY PULL: Get existing cloud data before we push anything
+    const { success } = await storageService.syncWithCloud();
+    
+    if (success) {
+      alert("✅ Cloud linked! Existing data has been retrieved.");
+      onDataRefresh();
+    } else {
+      alert("❌ Credentials saved, but connection failed. Please check your Upstash URL/Token.");
+    }
+    setIsSyncing(false);
+  };
+
+  const forcePull = async () => {
+    setIsSyncing(true);
+    const { success } = await storageService.syncWithCloud();
+    if (success) {
+      alert("Cloud state pulled successfully.");
+      onDataRefresh();
+    } else {
+      alert("Cloud pull failed.");
+    }
+    setIsSyncing(false);
   };
 
   const addItem = (type: 'carModels' | 'manufacturingShops') => {
@@ -197,8 +221,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         {activeTab === 'CLOUD' && (
           <div className="space-y-8 max-w-2xl">
             <div className="p-8 bg-blue-50 rounded-[32px] border border-blue-100">
-               <h4 className="text-xl font-black text-blue-900 uppercase">Cloud Database Link</h4>
-               <p className="text-blue-700 text-xs mt-2 font-medium">Link this app to an Upstash Redis database to persist data across Vercel deployments and share it with other users.</p>
+               <h4 className="text-xl font-black text-blue-900 uppercase">Cloud Mesh Gateway</h4>
+               <p className="text-blue-700 text-xs mt-2 font-medium">Link this app to an Upstash Redis database to persist data across Vercel deployments. Data is pulled first when linking.</p>
             </div>
             
             <div className="space-y-6">
@@ -221,12 +245,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} 
                 />
               </div>
-              <button 
-                onClick={saveDBCreds}
-                className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all"
-              >
-                CONNECT TO MESH DATABASE
-              </button>
+              <div className="flex gap-4">
+                <button 
+                  disabled={isSyncing}
+                  onClick={saveDBCreds}
+                  className="flex-1 py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all disabled:opacity-50"
+                >
+                  {isSyncing ? 'INITIALIZING MESH...' : 'CONNECT & SYNC CLOUD'}
+                </button>
+                <button 
+                  onClick={forcePull}
+                  className="px-6 py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-black transition-all"
+                >
+                  FORCE PULL
+                </button>
+              </div>
             </div>
           </div>
         )}

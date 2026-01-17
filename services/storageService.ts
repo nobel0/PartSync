@@ -8,6 +8,7 @@ const USER_KEY = 'partflow_current_user_v8';
 const TRANSFERS_KEY = 'partflow_transfers_v8';
 const SUPPLIERS_KEY = 'partflow_suppliers_v8';
 const DB_CRED_KEY = 'partflow_db_credentials_v8';
+const LAST_SYNC_KEY = 'partflow_last_updated_v8';
 
 interface DBCredentials {
   url: string;
@@ -42,16 +43,11 @@ const DEFAULT_CONFIG: AppConfig = {
 };
 
 export const storageService = {
-  // --- CREDENTIALS HANDLING ---
   getDBCredentials: (): DBCredentials | null => {
-    // 1. Check Manual Override in LocalStorage
     const stored = localStorage.getItem(DB_CRED_KEY);
     if (stored) return JSON.parse(stored);
-
-    // 2. Check Environment Variables (Vite/Vercel)
     const envUrl = (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_URL || (process as any).env?.UPSTASH_REDIS_REST_URL;
     const envToken = (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_TOKEN || (process as any).env?.UPSTASH_REDIS_REST_TOKEN;
-    
     if (envUrl && envToken) return { url: envUrl.replace(/\/$/, ''), token: envToken };
     return null;
   },
@@ -61,7 +57,6 @@ export const storageService = {
     else localStorage.removeItem(DB_CRED_KEY);
   },
 
-  // --- CORE STORAGE ---
   getCurrentUser: (): User | null => {
     const data = localStorage.getItem(USER_KEY);
     return data ? JSON.parse(data) : null;
@@ -73,16 +68,11 @@ export const storageService = {
   },
 
   onSync: (callback: () => void) => {
-    syncChannel.onmessage = (event) => {
-      if (event.data === 'update') callback();
-    };
+    syncChannel.onmessage = (event) => { if (event.data === 'update') callback(); };
   },
 
-  notifySync: () => {
-    syncChannel.postMessage('update');
-  },
+  notifySync: () => { syncChannel.postMessage('update'); },
 
-  // --- CLOUD ENGINE ---
   syncWithCloud: async (): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
     const creds = storageService.getDBCredentials();
     if (!creds) return { success: true, mode: 'LOCAL' };
@@ -95,23 +85,24 @@ export const storageService = {
       
       if (data && data.result) {
         const remoteState = JSON.parse(data.result);
-        const localUpdatedAt = parseInt(localStorage.getItem('partflow_last_updated') || '0');
+        const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
         const remoteUpdatedAt = remoteState.lastPushAt || 0;
 
-        // Only sync if remote is newer
-        if (remoteUpdatedAt > localUpdatedAt) {
+        // Force sync if local is 0 (new device) or remote is strictly newer
+        if (localUpdatedAt === 0 || remoteUpdatedAt > localUpdatedAt) {
           if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
           if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
           if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
           if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
-          localStorage.setItem('partflow_last_updated', remoteUpdatedAt.toString());
+          localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
           storageService.notifySync();
+          console.log("Cloud Pull: Success. Registry Updated.");
         }
         return { success: true, mode: 'CLOUD' };
       }
-      return { success: true, mode: 'CLOUD' }; // Connection ok, just no data yet
+      return { success: true, mode: 'CLOUD' };
     } catch (e) { 
-      console.error("Cloud Error:", e);
+      console.error("Cloud Pull Error:", e);
       return { success: false, mode: 'LOCAL' };
     }
   },
@@ -130,35 +121,34 @@ export const storageService = {
         lastPushAt: timestamp
       });
       
-      const response = await fetch(`${creds.url}/set/partflow_master_v8`, {
+      // Use the absolute most reliable POST / [SET, key, val] format
+      const response = await fetch(`${creds.url}/`, {
         method: 'POST',
         headers: { 
           Authorization: `Bearer ${creds.token}`,
           'Content-Type': 'application/json'
         },
-        body: payload // Note: We do NOT JSON.stringify the payload again
+        body: JSON.stringify(["SET", "partflow_master_v8", payload])
       });
 
       if (response.ok) {
-        localStorage.setItem('partflow_last_updated', timestamp.toString());
+        localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
+        console.log("Cloud Push: Success.");
+      } else {
+        console.error("Cloud Push Failed with status:", response.status);
       }
     } catch (e) {
-      console.error("Cloud Push Failed:", e);
+      console.error("Cloud Push Error:", e);
     }
   },
 
-  // --- DOMAIN METHODS ---
   getParts: (): Part[] => JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'),
   getTransfers: (): Transfer[] => JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]'),
   getSuppliers: (): Supplier[] => JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'),
   getConfig: (): AppConfig => {
     const stored = localStorage.getItem(CONFIG_KEY);
     if (!stored) return DEFAULT_CONFIG;
-    try {
-      return JSON.parse(stored);
-    } catch (e) {
-      return DEFAULT_CONFIG;
-    }
+    try { return JSON.parse(stored); } catch (e) { return DEFAULT_CONFIG; }
   },
 
   savePart: (part: Part) => {
@@ -239,43 +229,19 @@ export const storageService = {
     const transfers = storageService.getTransfers();
     const idx = transfers.findIndex(t => t.id === id);
     if (idx === -1) return;
-    
     const user = storageService.getCurrentUser();
     const transfer = transfers[idx];
     if (transfer.status !== 'PENDING') return;
-
-    transfers[idx] = {
-      ...transfer,
-      status: 'COMPLETED',
-      engineerId: user?.id,
-      engineerName: user?.username,
-      engineerSignature: `SIG_${Math.random().toString(36).substr(2, 8).toUpperCase()}`
-    };
-
+    transfers[idx] = { ...transfer, status: 'COMPLETED', engineerId: user?.id, engineerName: user?.username, engineerSignature: `SIG_${Math.random().toString(36).substr(2, 8).toUpperCase()}` };
     localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
-
-    transfer.parts.forEach(p => {
-      storageService.updateStock(
-        p.partId, 
-        p.quantity, 
-        'RECEIVE', 
-        `Transfer completed from ${transfer.fromLocation}`, 
-        transfer.toLocation
-      );
-    });
-
+    transfer.parts.forEach(p => { storageService.updateStock(p.partId, p.quantity, 'RECEIVE', `Transfer from ${transfer.fromLocation}`, transfer.toLocation); });
     storageService.notifySync();
     storageService.pushToCloud();
   },
 
   checkLowStock: (part: Part) => {
     if (part.currentStock <= LOW_STOCK_THRESHOLD) {
-      storageService.addNotification({
-        partId: part.id,
-        partName: part.name,
-        message: `ALARM: ${part.name} critically low (${part.currentStock}).`,
-        type: 'WARNING'
-      });
+      storageService.addNotification({ partId: part.id, partName: part.name, message: `ALARM: ${part.name} low stock.`, type: 'WARNING' });
     }
   },
 
@@ -287,7 +253,6 @@ export const storageService = {
   },
 
   getNotifications: (): Notification[] => JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]'),
-  
   markAsRead: (id: string) => {
     const notifications = storageService.getNotifications();
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.map(n => n.id === id ? { ...n, read: true } : n)));
@@ -337,14 +302,7 @@ export const storageService = {
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
       const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-      const part: any = { 
-        id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
-        history: [], 
-        updatedAt: Date.now(), 
-        currentLocation: 'SUPPLIER',
-        currentStock: 0,
-        targetStock: 0
-      };
+      const part: any = { id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, history: [], updatedAt: Date.now(), currentLocation: 'SUPPLIER', currentStock: 0, targetStock: 0 };
       headers.forEach((header, idx) => {
         const col = config.columns.find(c => c.label === header || c.id === header);
         if (col) part[col.id] = col.type === 'number' ? parseInt(values[idx]) || 0 : values[idx];
