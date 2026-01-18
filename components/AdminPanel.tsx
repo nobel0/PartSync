@@ -90,15 +90,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   const addItem = (type: 'carModels' | 'manufacturingShops') => {
     if (!newItem.trim()) return;
-    if (formData[type].includes(newItem.trim())) return alert("Item already exists.");
-    setFormData({ ...formData, [type]: [...formData[type], newItem.trim()] });
+    const currentList = formData[type] as string[];
+    if (currentList.includes(newItem.trim())) return alert("Item already exists.");
+    
+    const updated = { ...formData };
+    (updated[type] as string[]) = [...currentList, newItem.trim()];
+    setFormData(updated);
     setNewItem('');
   };
 
   const removeItem = (type: 'carModels' | 'manufacturingShops', index: number) => {
-    const updated = [...formData[type]];
-    updated.splice(index, 1);
-    setFormData({ ...formData, [type]: updated });
+    const currentList = formData[type] as string[];
+    const updatedList = [...currentList];
+    updatedList.splice(index, 1);
+    
+    const updated = { ...formData };
+    (updated[type] as string[]) = updatedList;
+    setFormData(updated);
   };
 
   const addOrUpdateColumn = () => {
@@ -109,7 +117,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       const oldCol = formData.columns.find(c => c.id === editingColId);
       if (!oldCol) return;
 
+      // Handle Key Migration
       if (finalKey !== editingColId) {
+        if (oldCol.isCore) {
+          alert("CORE SYSTEM KEY cannot be renamed. You can only change the display label for this field.");
+          return;
+        }
         if (window.confirm(`Renaming Key "${editingColId}" to "${finalKey}" will migrate all existing inventory data to this new property ID. Proceed?`)) {
           storageService.migratePartKey(editingColId, finalKey);
         } else return;
@@ -138,6 +151,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   };
 
   const removeColumn = (id: string) => {
+    const col = formData.columns.find(c => c.id === id);
+    if (col?.isCore) return alert("Cannot delete core system fields.");
     if (window.confirm("Permanently delete this column? Data associated with this field in existing parts will be purged.")) {
       setFormData({ ...formData, columns: formData.columns.filter(c => c.id !== id) });
       storageService.clearColumnData(id);
@@ -217,6 +232,42 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
           </div>
         )}
 
+        {activeTab === 'REGISTRY' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+            <div className="space-y-6">
+              <h4 className="text-lg font-black text-slate-900 uppercase">Registered Models</h4>
+              <div className="flex gap-2">
+                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Model..." value={newItem} onChange={e => setNewItem(e.target.value)} />
+                <button onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
+              </div>
+              <div className="space-y-2 max-h-64 overflow-auto">
+                {formData.carModels.map((m, i) => (
+                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                    <span className="font-bold text-slate-700 text-xs">{m}</span>
+                    <button onClick={() => removeItem('carModels', i)} className="text-red-400">✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              <h4 className="text-lg font-black text-slate-900 uppercase">Manufacturing Areas</h4>
+              <div className="flex gap-2">
+                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Shop..." value={newItem} onChange={e => setNewItem(e.target.value)} />
+                <button onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
+              </div>
+              <div className="space-y-2 max-h-64 overflow-auto">
+                {formData.manufacturingShops.map((m, i) => (
+                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                    <span className="font-bold text-slate-700 text-xs">{m}</span>
+                    <button onClick={() => removeItem('manufacturingShops', i)} className="text-red-400">✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'COLUMNS' && (
           <div className="space-y-10">
             <div className="bg-slate-900 p-8 rounded-[32px] text-white flex flex-col md:flex-row md:items-end gap-6">
@@ -226,7 +277,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               </div>
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Key (ID)</label>
-                <input className="w-full px-5 py-3 bg-white/10 border border-white/20 rounded-xl font-mono text-sm" placeholder="serial_number" value={newColKey} onChange={e => setNewColKey(e.target.value)} />
+                <input 
+                  disabled={editingColId ? formData.columns.find(c => c.id === editingColId)?.isCore : false}
+                  className={`w-full px-5 py-3 border rounded-xl font-mono text-sm ${editingColId && formData.columns.find(c => c.id === editingColId)?.isCore ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent' : 'bg-white/10 border-white/20'}`} 
+                  placeholder="serial_number" 
+                  value={newColKey} 
+                  onChange={e => setNewColKey(e.target.value)} 
+                />
               </div>
               <div className="w-full md:w-32">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Type</label>
@@ -251,6 +308,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     <div className="flex items-center justify-between mb-2">
                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{col.type}</span>
                        {col.isPrimary && <span className="text-[8px] font-black px-2 py-0.5 bg-blue-600 text-white rounded uppercase">Primary</span>}
+                       {col.isCore && <span className="text-[8px] font-black px-2 py-0.5 bg-slate-900 text-white rounded uppercase ml-1">Core</span>}
                     </div>
                     <h5 className="text-sm font-black text-slate-900">{col.label}</h5>
                     <p className="text-[10px] font-mono text-slate-400 mt-1">{col.id}</p>
@@ -310,6 +368,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     </div>
                   ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'DATA' && (
+          <div className="max-w-4xl space-y-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="p-10 bg-slate-50 rounded-[40px] border border-slate-200 text-center space-y-6">
+                <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto text-slate-900"><ICONS.Inventory /></div>
+                <h4 className="text-xl font-black text-slate-900 uppercase">Registry Export</h4>
+                <p className="text-slate-500 text-xs font-medium">Download your entire asset database as a structured CSV for offline auditing or Excel analysis.</p>
+                <button onClick={() => storageService.exportCSV()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">Download Master CSV</button>
+              </div>
+
+              <div className="p-10 bg-slate-50 rounded-[40px] border border-slate-200 text-center space-y-6">
+                <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto text-blue-600"><ICONS.Plus /></div>
+                <h4 className="text-xl font-black text-slate-900 uppercase">Bulk Ingestion</h4>
+                <p className="text-slate-500 text-xs font-medium">Upload a CSV file with headers matching your current system schema to import new assets in bulk.</p>
+                <label className="block w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest cursor-pointer hover:bg-blue-700 transition-all">
+                  Upload CSV Source
+                  <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const text = await file.text();
+                      await storageService.importCSV(text);
+                      onDataRefresh();
+                      alert("Import process complete.");
+                    }
+                  }} />
+                </label>
+              </div>
+            </div>
+
+            <div className="p-10 bg-red-50 rounded-[40px] border border-red-100 flex items-center justify-between">
+              <div className="max-w-md">
+                <h4 className="text-lg font-black text-red-900 uppercase">Emergency Registry Purge</h4>
+                <p className="text-red-700 text-xs font-medium mt-1">This operation wipes all parts, history, and notifications. This is irreversible unless you have a CSV backup.</p>
+              </div>
+              <button onClick={() => { if(window.confirm("PURGE ALL DATA? Type 'DELETE' to confirm.")) { storageService.wipeAllInventory(); onDataRefresh(); } }} className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all">Wipe Global Registry</button>
             </div>
           </div>
         )}

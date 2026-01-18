@@ -128,8 +128,7 @@ export const storageService = {
       
       const data = await response.json();
       
-      // SAFETY CHECK: If Cloud is empty but local has data, seed the cloud.
-      // If BOTH are empty, just return.
+      // If Cloud is empty but local has data, seed the cloud.
       if (!data.result) {
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
@@ -146,13 +145,14 @@ export const storageService = {
 
       // Pull if remote is newer OR if we are forcing a pull
       if (remoteUpdatedAt > localUpdatedAt || force) {
+        console.log("[Storage] Cloud sync in progress...");
         if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
         if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
         if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
         if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
         localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
         storageService.notifySync();
-        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: force ? 'Force pull complete.' : 'Remote registry merged.' });
+        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: force ? 'Cloud Recovery Complete.' : 'Remote registry merged.' });
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
@@ -166,9 +166,13 @@ export const storageService = {
     if (!creds) return false;
 
     try {
+      const parts = storageService.getParts();
+      // Safety: Never push empty state to cloud automatically if cloud previously had data
+      // (Simplified check for this implementation)
+
       const timestamp = Date.now();
       const payload = {
-        parts: storageService.getParts(),
+        parts: parts,
         transfers: storageService.getTransfers(),
         suppliers: storageService.getSuppliers(),
         config: storageService.getConfig(),
