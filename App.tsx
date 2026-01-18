@@ -26,6 +26,14 @@ const App: React.FC = () => {
   const [cloudStatus, setCloudStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
   const [isInitializing, setIsInitializing] = useState(true);
 
+  // Sync favicon with branding
+  useEffect(() => {
+    const favicon = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+    if (favicon && config.logoUrl) {
+      favicon.href = config.logoUrl;
+    }
+  }, [config.logoUrl]);
+
   const loadData = useCallback(() => {
     const currentConfig = storageService.getConfig();
     setConfig(currentConfig);
@@ -68,9 +76,10 @@ const App: React.FC = () => {
 
   if (isInitializing) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] animate-pulse text-blue-500">Establishing Cloud Mesh Link...</p>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white p-10 text-center">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-8"></div>
+        <h2 className="text-xl font-black uppercase tracking-widest mb-2">PartFlow Protocol</h2>
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 animate-pulse">Syncing Facility Registry via Cloud Mesh...</p>
       </div>
     );
   }
@@ -81,18 +90,18 @@ const App: React.FC = () => {
 
   const handleSavePart = async (p: Part) => {
     setCloudStatus('SYNCING');
-    await storageService.savePart(p);
+    const success = await storageService.savePart(p);
+    setCloudStatus(success ? 'IDLE' : 'ERROR');
     loadData();
     setShowPartForm(false);
     setEditingPart(null);
-    setCloudStatus('IDLE');
   };
 
   const handleUpdateStock = async (id: string, qty: number, type: 'RECEIVE' | 'ISSUE') => {
     setCloudStatus('SYNCING');
-    await storageService.updateStock(id, qty, type);
+    const success = await storageService.updateStock(id, qty, type);
+    setCloudStatus(success ? 'IDLE' : 'ERROR');
     loadData();
-    setCloudStatus('IDLE');
   };
 
   const NavItem = ({ id, label, icon: Icon, badge }: { id: ViewType, label: string, icon: any, badge?: number }) => (
@@ -119,10 +128,10 @@ const App: React.FC = () => {
           </div>
         </div>
         <nav className="flex-1 space-y-1">
-          <NavItem id="DASHBOARD" label="Center" icon={ICONS.Dashboard} />
-          <NavItem id="INVENTORY" label="Assets" icon={ICONS.Inventory} />
+          <NavItem id="DASHBOARD" label={config.labels.dashboard} icon={ICONS.Dashboard} />
+          <NavItem id="INVENTORY" label={config.labels.inventory} icon={ICONS.Inventory} />
           <NavItem id="TRANSFERS" label="Transfers" icon={ICONS.Truck} />
-          <NavItem id="SUPPLIERS" label="Vendors" icon={ICONS.Suppliers} />
+          <NavItem id="SUPPLIERS" label={config.labels.suppliers} icon={ICONS.Suppliers} />
           <NavItem id="ALERTS" label="Alerts" icon={ICONS.Alerts} badge={unreadCount} />
           {user.role === 'ADMIN' && <NavItem id="ADMIN" label="System" icon={ICONS.Settings} />}
         </nav>
@@ -135,6 +144,7 @@ const App: React.FC = () => {
         <button onClick={() => setView('INVENTORY')} className={`flex flex-col items-center flex-1 py-1 ${view === 'INVENTORY' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Inventory /><span className="text-[9px] font-bold">Assets</span></button>
         <button onClick={() => setView('TRANSFERS')} className={`flex flex-col items-center flex-1 py-1 ${view === 'TRANSFERS' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Truck /><span className="text-[9px] font-bold">Transfers</span></button>
         <button onClick={() => setView('ALERTS')} className={`flex flex-col items-center flex-1 py-1 ${view === 'ALERTS' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Alerts /><span className="text-[9px] font-bold">Alerts</span></button>
+        {user.role === 'ADMIN' && <button onClick={() => setView('ADMIN')} className={`flex flex-col items-center flex-1 py-1 ${view === 'ADMIN' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Settings /><span className="text-[9px] font-bold">System</span></button>}
       </nav>
 
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -142,11 +152,10 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <h2 className="text-base lg:text-xl font-black text-slate-800 uppercase tracking-tight">{view}</h2>
             
-            {/* Database Indicator */}
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${dbMode === 'CLOUD' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-amber-50 border-amber-100 text-amber-600'}`}>
-               <div className={`w-1.5 h-1.5 rounded-full ${dbMode === 'CLOUD' ? 'bg-emerald-500' : 'bg-amber-500'} ${cloudStatus === 'SYNCING' ? 'animate-pulse' : ''}`}></div>
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors ${cloudStatus === 'ERROR' ? 'bg-red-50 border-red-100 text-red-600' : dbMode === 'CLOUD' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-amber-50 border-amber-100 text-amber-600'}`}>
+               <div className={`w-1.5 h-1.5 rounded-full ${cloudStatus === 'ERROR' ? 'bg-red-500' : dbMode === 'CLOUD' ? 'bg-emerald-500' : 'bg-amber-500'} ${cloudStatus === 'SYNCING' ? 'animate-pulse' : ''}`}></div>
                <span className="text-[9px] font-black uppercase tracking-widest">
-                {cloudStatus === 'SYNCING' ? 'SYNCING...' : dbMode === 'CLOUD' ? 'CLOUD READY' : 'LOCAL ONLY'}
+                {cloudStatus === 'SYNCING' ? 'SYNCING...' : cloudStatus === 'ERROR' ? 'SYNC FAILED' : dbMode === 'CLOUD' ? 'MESH ONLINE' : 'LOCAL CACHE'}
                </span>
             </div>
 
@@ -171,7 +180,12 @@ const App: React.FC = () => {
           {view === 'TRANSFERS' && <Transfers user={user} parts={parts} onTransferComplete={loadData} />}
           {view === 'SUPPLIERS' && <SuppliersView config={config} parts={parts} />}
           {view === 'ALERTS' && <Alerts notifications={notifications} onMarkRead={(id) => { storageService.markAsRead(id); loadData(); }} />}
-          {view === 'ADMIN' && <AdminPanel config={config} onSaveConfig={(c) => { storageService.saveConfig(c); loadData(); }} onDataRefresh={loadData} />}
+          {view === 'ADMIN' && <AdminPanel config={config} onSaveConfig={async (c) => { 
+            setCloudStatus('SYNCING');
+            await storageService.saveConfig(c);
+            setCloudStatus('IDLE');
+            loadData(); 
+          }} onDataRefresh={loadData} />}
         </section>
 
         {(showPartForm || editingPart) && (

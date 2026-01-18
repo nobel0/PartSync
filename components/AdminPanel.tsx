@@ -88,14 +88,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   const addOrUpdateColumn = () => {
     if (!newColLabel.trim() || !newColKey.trim()) return;
-    const finalKey = newColKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const finalKey = newColKey.trim(); // Removed aggressive regex to allow more flexibility if needed
     
     if (editingColId) {
       const oldCol = formData.columns.find(c => c.id === editingColId);
       if (!oldCol) return;
 
       if (finalKey !== editingColId) {
-        if (window.confirm(`Rename key "${editingColId}" to "${finalKey}"? Your inventory data will be migrated immediately.`)) {
+        if (window.confirm(`Renaming Key "${editingColId}" to "${finalKey}" will migrate all existing inventory data to this new property ID. Proceed?`)) {
           storageService.migratePartKey(editingColId, finalKey);
         } else return;
       }
@@ -169,17 +169,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                       <span className="font-mono text-sm text-slate-500 font-bold">{formData.primaryColor}</span>
                     </div>
                   </div>
+                  <div className="pt-4 border-t border-slate-100">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Navigation Labels</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <input className="px-4 py-2 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Dashboard Label" value={formData.labels.dashboard} onChange={e => setFormData({ ...formData, labels: { ...formData.labels, dashboard: e.target.value } })} />
+                      <input className="px-4 py-2 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Inventory Label" value={formData.labels.inventory} onChange={e => setFormData({ ...formData, labels: { ...formData.labels, inventory: e.target.value } })} />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Credentials</h4>
-                  <div>
-                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Email</label>
-                    <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminEmail} onChange={e => setFormData({ ...formData, adminEmail: e.target.value })} />
+                <div className="space-y-6">
+                  <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Logo / Favicon</h4>
+                    <div className="flex items-center gap-6">
+                       <div className="w-20 h-20 bg-white rounded-2xl border flex items-center justify-center overflow-hidden shadow-sm">
+                          {formData.logoUrl ? <img src={formData.logoUrl} className="max-w-[80%] max-h-[80%] object-contain" alt="Preview" /> : <div className="text-[10px] font-black text-slate-300">NO LOGO</div>}
+                       </div>
+                       <div className="flex-1">
+                          <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Logo Resource URL</label>
+                          <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="https://..." value={formData.logoUrl} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
+                       </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Passkey</label>
-                    <input type="password" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminPassword} onChange={e => setFormData({ ...formData, adminPassword: e.target.value })} />
+
+                  <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Credentials</h4>
+                    <div>
+                      <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Email</label>
+                      <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminEmail} onChange={e => setFormData({ ...formData, adminEmail: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Passkey</label>
+                      <input type="password" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminPassword} onChange={e => setFormData({ ...formData, adminPassword: e.target.value })} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -247,21 +269,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {formData.columns.map(col => (
-                <div key={col.id} className={`p-6 rounded-[24px] border border-slate-100 flex flex-col justify-between ${col.isCore ? 'bg-slate-50' : 'bg-white shadow-sm'}`}>
+                <div key={col.id} className={`p-6 rounded-[24px] border border-slate-100 flex flex-col justify-between ${col.isCore ? 'bg-slate-50 border-blue-100 shadow-blue-50 shadow-lg' : 'bg-white shadow-sm'}`}>
                   <div>
                     <div className="flex items-center justify-between mb-2">
                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{col.type}</span>
-                       {col.isCore && <span className="text-[8px] font-black px-2 py-0.5 bg-slate-200 text-slate-500 rounded uppercase">Core Field</span>}
+                       {col.isCore && <span className="text-[8px] font-black px-2 py-0.5 bg-blue-100 text-blue-700 rounded uppercase">Core System Field</span>}
                     </div>
                     <h5 className="text-sm font-black text-slate-900">{col.label}</h5>
                     <p className="text-[10px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
-                  {!col.isCore && (
-                    <div className="mt-6 flex gap-2">
-                      <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); }} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black">EDIT</button>
-                      <button onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>
-                    </div>
-                  )}
+                  <div className="mt-6 flex gap-2">
+                    <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); }} className="flex-1 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black">EDIT</button>
+                    {!col.isCore && <button onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>}
+                  </div>
                 </div>
               ))}
             </div>

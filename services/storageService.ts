@@ -27,18 +27,25 @@ interface CloudLog {
 const syncChannel = new BroadcastChannel('partflow_mesh_sync');
 let sessionLogs: CloudLog[] = [];
 
+// Improved check for various environment variable formats
+const getEnv = (key: string): string | undefined => {
+  return (process.env[key] as string) || 
+         (import.meta as any).env?.[`VITE_${key}`] || 
+         (import.meta as any).env?.[key];
+};
+
 const isValidEnv = (val: any) => val && typeof val === 'string' && val !== 'undefined' && val !== 'null' && val.trim().length > 5;
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
-    // 1. Check System/Vercel Env Vars First (Injected by Vite)
-    const envUrl = (process.env.UPSTASH_REDIS_REST_URL as string) || (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_URL;
-    const envToken = (process.env.UPSTASH_REDIS_REST_TOKEN as string) || (import.meta as any).env?.VITE_UPSTASH_REDIS_REST_TOKEN;
+    // 1. Try System Env Vars (highest priority)
+    const envUrl = getEnv('UPSTASH_REDIS_REST_URL');
+    const envToken = getEnv('UPSTASH_REDIS_REST_TOKEN');
     
     if (isValidEnv(envUrl) && isValidEnv(envToken)) {
       return { 
-        url: envUrl.trim().replace(/\/$/, ''), 
-        token: envToken.trim() 
+        url: envUrl!.trim().replace(/\/$/, ''), 
+        token: envToken!.trim() 
       };
     }
 
@@ -69,18 +76,16 @@ export const storageService = {
 
   testConnection: async (): Promise<{ success: boolean; message: string }> => {
     const creds = storageService.getDBCredentials();
-    if (!creds) return { success: false, message: "Missing Upstash URL or Token in Vercel settings." };
+    if (!creds) return { success: false, message: "No Cloud Mesh Configured." };
 
     try {
       const testVal = `HEALTH_${Date.now()}`;
-      const writeResponse = await fetch(`${creds.url}/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(["SET", HEALTH_KEY, testVal])
+      const response = await fetch(`${creds.url}/set/${HEALTH_KEY}/${testVal}`, {
+        headers: { Authorization: `Bearer ${creds.token}` }
       });
 
-      if (writeResponse.status === 401) return { success: false, message: "401 Unauthorized: Invalid Upstash Token." };
-      if (!writeResponse.ok) return { success: false, message: `DB Error: HTTP ${writeResponse.status}` };
+      if (response.status === 401) return { success: false, message: "Invalid Upstash Token." };
+      if (!response.ok) return { success: false, message: `Upstash Response Error: ${response.status}` };
 
       const readResponse = await fetch(`${creds.url}/get/${HEALTH_KEY}`, {
         headers: { Authorization: `Bearer ${creds.token}` }
@@ -88,9 +93,9 @@ export const storageService = {
       
       const readData = await readResponse.json();
       if (readData.result === testVal) return { success: true, message: "Cloud Link Verified." };
-      return { success: false, message: "Verification mismatch." };
+      return { success: false, message: "Write-Read Mismatch." };
     } catch (e) {
-      return { success: false, message: "Network failure: Cannot reach Upstash." };
+      return { success: false, message: "Network Timeout / DNS Failure." };
     }
   },
 
@@ -117,30 +122,41 @@ export const storageService = {
     if (!creds) return { success: true, mode: 'LOCAL' };
 
     try {
+      console.log("[Storage] Attempting Cloud Pull...");
       const response = await fetch(`${creds.url}/get/${MASTER_DB_KEY}`, {
         headers: { Authorization: `Bearer ${creds.token}` }
       });
       
-      if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+      if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
       
       const data = await response.json();
-      if (data && data.result) {
-        const remoteState = JSON.parse(data.result);
-        const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
-        const remoteUpdatedAt = remoteState.lastPushAt || 0;
+      
+      // Handle the case where the cloud is completely empty
+      if (!data.result) {
+        console.log("[Storage] Cloud is empty. Initializing Seed Push...");
+        const pushed = await storageService.pushToCloud();
+        return { success: pushed, mode: 'CLOUD' };
+      }
 
-        if (remoteUpdatedAt > localUpdatedAt) {
-          if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
-          if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
-          if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
-          if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
-          localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
-          storageService.notifySync();
-          sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: 'Registry pull complete' });
-        }
+      const remoteState = JSON.parse(data.result);
+      const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
+      const remoteUpdatedAt = remoteState.lastPushAt || 0;
+
+      if (remoteUpdatedAt > localUpdatedAt) {
+        console.log("[Storage] Cloud is newer. Updating local state.");
+        if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
+        if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
+        if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
+        if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
+        localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
+        storageService.notifySync();
+        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: 'Remote registry merged.' });
+      } else {
+        console.log("[Storage] Local state is up to date.");
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
+      console.error("[Storage] Sync Error:", e);
       sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'ERROR', message: String(e) });
       return { success: false, mode: 'LOCAL' };
     }
@@ -151,6 +167,7 @@ export const storageService = {
     if (!creds) return false;
 
     try {
+      console.log("[Storage] Initiating Cloud Push...");
       const timestamp = Date.now();
       const payload = {
         parts: storageService.getParts(),
@@ -172,21 +189,39 @@ export const storageService = {
 
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud' });
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud.' });
+        console.log("[Storage] Push successful.");
         return true;
       } else {
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Cloud rejected: ${response.status}` });
+        const errorText = await response.text();
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Rejected: ${response.status} - ${errorText.substring(0, 20)}` });
         return false;
       }
     } catch (e) {
-      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Network sync error' });
+      console.error("[Storage] Push Network Error:", e);
+      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Mesh connection lost.' });
       return false;
     }
   },
 
-  getParts: (): Part[] => JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'),
-  getTransfers: (): Transfer[] => JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]'),
-  getSuppliers: (): Supplier[] => JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'),
+  getParts: (): Part[] => {
+    try {
+      return JSON.parse(localStorage.getItem(PARTS_KEY) || '[]');
+    } catch (e) { return []; }
+  },
+  
+  getTransfers: (): Transfer[] => {
+    try {
+      return JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]');
+    } catch (e) { return []; }
+  },
+
+  getSuppliers: (): Supplier[] => {
+    try {
+      return JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]');
+    } catch (e) { return []; }
+  },
+
   getConfig: (): AppConfig => {
     const stored = localStorage.getItem(CONFIG_KEY);
     const defaultConf: AppConfig = {
@@ -231,7 +266,7 @@ export const storageService = {
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
     storageService.checkLowStock(updatedPart);
     storageService.notifySync();
-    await storageService.pushToCloud();
+    return await storageService.pushToCloud();
   },
 
   deletePart: async (id: string) => {
@@ -239,13 +274,13 @@ export const storageService = {
     const updated = parts.filter(p => p.id !== id);
     localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
     storageService.notifySync();
-    await storageService.pushToCloud();
+    return await storageService.pushToCloud();
   },
 
   saveConfig: async (c: AppConfig) => { 
     localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...c, updatedAt: Date.now() })); 
     storageService.notifySync();
-    await storageService.pushToCloud(); 
+    return await storageService.pushToCloud(); 
   },
 
   updateStock: async (partId: string, quantity: number, type: 'RECEIVE' | 'ISSUE', notes?: string, newLocation?: PartLocation) => {
@@ -273,7 +308,7 @@ export const storageService = {
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
     storageService.checkLowStock(parts[idx]);
     storageService.notifySync();
-    await storageService.pushToCloud();
+    return await storageService.pushToCloud();
   },
 
   createTransfer: async (transfer: Omit<Transfer, 'id' | 'timestamp' | 'status' | 'supplierSignature'>) => {
@@ -288,7 +323,7 @@ export const storageService = {
     transfers.unshift(newTransfer);
     localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers.slice(0, 100)));
     storageService.notifySync();
-    await storageService.pushToCloud();
+    return await storageService.pushToCloud();
   },
 
   acceptTransfer: async (id: string) => {
@@ -302,7 +337,7 @@ export const storageService = {
     localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
     transfer.parts.forEach(p => { storageService.updateStock(p.partId, p.quantity, 'RECEIVE', `Transfer from ${transfer.fromLocation}`, transfer.toLocation); });
     storageService.notifySync();
-    await storageService.pushToCloud();
+    return await storageService.pushToCloud();
   },
 
   checkLowStock: (part: Part) => {
@@ -318,7 +353,12 @@ export const storageService = {
     storageService.notifySync();
   },
 
-  getNotifications: (): Notification[] => JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]'),
+  getNotifications: (): Notification[] => {
+    try {
+      return JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]');
+    } catch (e) { return []; }
+  },
+  
   markAsRead: (id: string) => {
     const notifications = storageService.getNotifications();
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.map(n => n.id === id ? { ...n, read: true } : n)));
