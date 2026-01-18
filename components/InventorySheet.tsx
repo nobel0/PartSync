@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Part, AppConfig, User } from '../types';
 import { ICONS, LOW_STOCK_THRESHOLD } from '../constants';
@@ -46,35 +47,22 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                 <tr key={part.id} className={`transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} ${!hasPermission ? 'text-slate-400' : 'hover:bg-blue-50/50'}`}>
                   {config.columns.map(col => {
                     const val = part[col.id];
-                    // Primary column rendering (Name + Image)
-                    if (col.isPrimary) {
-                      return (
-                        <td key={col.id} className="px-4 lg:px-6 py-3 lg:py-4">
+                    return (
+                      <td key={col.id} className="px-4 lg:px-6 py-3 lg:py-4">
+                        {col.id === 'name' ? (
                           <div className="flex items-center gap-2 lg:gap-3">
                             <img src={part.imageUrl} className={`w-8 h-8 lg:w-10 lg:h-10 rounded-lg object-cover bg-slate-100 ${!hasPermission ? 'grayscale' : ''}`} alt="" />
                             <span className={`font-bold text-xs lg:text-sm line-clamp-1 ${hasPermission ? 'text-slate-800' : 'text-slate-400'}`}>{val}</span>
                           </div>
-                        </td>
-                      );
-                    }
-                    
-                    // Stock column rendering (Badges)
-                    if (col.id === 'currentStock') {
-                      return (
-                        <td key={col.id} className="px-4 lg:px-6 py-3 lg:py-4">
+                        ) : col.id === 'currentStock' ? (
                           <div className="flex items-center gap-2">
                              <span className={`text-xs lg:text-sm font-black px-2 py-0.5 rounded-lg ${!hasPermission ? 'bg-slate-100 text-slate-400' : (val <= LOW_STOCK_THRESHOLD ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-900')}`}>
                               {val?.toLocaleString()}
                             </span>
                           </div>
-                        </td>
-                      );
-                    }
-
-                    // Standard column rendering
-                    return (
-                      <td key={col.id} className="px-4 lg:px-6 py-3 lg:py-4">
-                        <span className="text-xs lg:text-sm font-medium truncate max-w-[150px] block">{val}</span>
+                        ) : (
+                          <span className="text-xs lg:text-sm font-medium truncate max-w-[150px] block">{val}</span>
+                        )}
                       </td>
                     );
                   })}

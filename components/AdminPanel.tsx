@@ -21,7 +21,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   const [newColLabel, setNewColLabel] = useState('');
   const [newColKey, setNewColKey] = useState('');
   const [newColType, setNewColType] = useState<'text' | 'number'>('text');
-  const [isPrimary, setIsPrimary] = useState(false);
 
   useEffect(() => {
     const current = storageService.getDBCredentials();
@@ -37,19 +36,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setIsSyncing(true);
     const result = await storageService.testConnection();
     setHealthStatus({ checked: true, ...result });
-    setIsSyncing(false);
-  };
-
-  const forcePull = async () => {
-    if (!window.confirm("WARNING: This will overwrite your current local session data with the cloud master registry. Proceed?")) return;
-    setIsSyncing(true);
-    const { success } = await storageService.syncWithCloud(true);
-    if (success) {
-      alert("✅ Registry recovered from cloud.");
-      onDataRefresh();
-    } else {
-      alert("❌ Cloud recovery failed.");
-    }
     setIsSyncing(false);
   };
 
@@ -77,7 +63,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   };
 
   const forcePush = async () => {
-    if (!window.confirm("WARNING: This will push your local session data to the cloud, potentially overwriting other users' changes. Proceed?")) return;
     setIsSyncing(true);
     const success = await storageService.pushToCloud();
     if (success) {
@@ -90,82 +75,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   const addItem = (type: 'carModels' | 'manufacturingShops') => {
     if (!newItem.trim()) return;
-    const currentList = formData[type];
-    if (currentList.includes(newItem.trim())) return alert("Item already exists.");
-    
-    setFormData(prev => ({
-      ...prev,
-      [type]: [...currentList, newItem.trim()]
-    }));
+    if (formData[type].includes(newItem.trim())) return alert("Item already exists.");
+    setFormData({ ...formData, [type]: [...formData[type], newItem.trim()] });
     setNewItem('');
   };
 
   const removeItem = (type: 'carModels' | 'manufacturingShops', index: number) => {
-    const updatedList = [...formData[type]];
-    updatedList.splice(index, 1);
-    
-    setFormData(prev => ({
-      ...prev,
-      [type]: updatedList
-    }));
+    const updated = [...formData[type]];
+    updated.splice(index, 1);
+    setFormData({ ...formData, [type]: updated });
   };
 
   const addOrUpdateColumn = () => {
     if (!newColLabel.trim() || !newColKey.trim()) return;
-    const finalKey = newColKey.trim();
+    const finalKey = newColKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
     
     if (editingColId) {
       const oldCol = formData.columns.find(c => c.id === editingColId);
       if (!oldCol) return;
 
       if (finalKey !== editingColId) {
-        const warningMessage = oldCol.isCore 
-          ? `WARNING: You are changing a CORE SYSTEM KEY ("${editingColId}" -> "${finalKey}"). This will migrate all data to the new key. Proceed?`
-          : `Renaming Key "${editingColId}" to "${finalKey}" will migrate all existing inventory data. Proceed?`;
-          
-        if (window.confirm(warningMessage)) {
+        if (window.confirm(`Rename key "${editingColId}" to "${finalKey}"? Your inventory data will be migrated immediately.`)) {
           storageService.migratePartKey(editingColId, finalKey);
         } else return;
       }
 
-      const updatedColumns: ColumnDefinition[] = formData.columns.map(col => {
-        const isTarget = col.id === editingColId;
-        const updatedCol: ColumnDefinition = isTarget 
-          ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary: !!isPrimary } 
-          : { ...col };
-        
-        if (isPrimary && updatedCol.id !== finalKey) {
-          updatedCol.isPrimary = false;
-        }
-        return updatedCol;
-      });
+      const updatedColumns = formData.columns.map(col => 
+        col.id === editingColId ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType } : col
+      );
       
       setFormData({ ...formData, columns: updatedColumns });
       setEditingColId(null);
       onDataRefresh();
     } else {
       if (formData.columns.some(c => c.id === finalKey)) return alert("System ID collision detected.");
-      const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary: !!isPrimary };
-      
-      let updatedColumns: ColumnDefinition[];
-      if (isPrimary) {
-        updatedColumns = formData.columns.map(c => ({ ...c, isPrimary: false } as ColumnDefinition));
-        updatedColumns.push(newCol);
-      } else {
-        updatedColumns = [...formData.columns, newCol];
-      }
-      
-      setFormData({ ...formData, columns: updatedColumns });
+      const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false };
+      setFormData({ ...formData, columns: [...formData.columns, newCol] });
     }
     
-    setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimary(false);
+    setNewColLabel(''); setNewColKey(''); setNewColType('text');
   };
 
   const removeColumn = (id: string) => {
-    const col = formData.columns.find(c => c.id === id);
-    if (col?.isCore) {
-      if (!window.confirm("CRITICAL: This is a CORE SYSTEM field. Deleting it might break built-in logic. Are you absolutely sure?")) return;
-    }
     if (window.confirm("Permanently delete this column? Data associated with this field in existing parts will be purged.")) {
       setFormData({ ...formData, columns: formData.columns.filter(c => c.id !== id) });
       storageService.clearColumnData(id);
@@ -218,27 +169,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                       <span className="font-mono text-sm text-slate-500 font-bold">{formData.primaryColor}</span>
                     </div>
                   </div>
-                  <div className="pt-4 border-t border-slate-100">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Navigation Labels</label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <input className="px-4 py-2 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Dashboard Label" value={formData.labels.dashboard} onChange={e => setFormData({ ...formData, labels: { ...formData.labels, dashboard: e.target.value } })} />
-                      <input className="px-4 py-2 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Inventory Label" value={formData.labels.inventory} onChange={e => setFormData({ ...formData, labels: { ...formData.labels, inventory: e.target.value } })} />
-                    </div>
-                  </div>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Logo / Favicon</h4>
-                    <div className="flex items-center gap-6">
-                       <div className="w-20 h-20 bg-white rounded-2xl border flex items-center justify-center overflow-hidden shadow-sm">
-                          {formData.logoUrl ? <img src={formData.logoUrl} className="max-w-[80%] max-h-[80%] object-contain" alt="Preview" /> : <div className="text-[10px] font-black text-slate-300">NO LOGO</div>}
-                       </div>
-                       <div className="flex-1">
-                          <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Logo Resource URL</label>
-                          <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="https://..." value={formData.logoUrl || ''} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
-                       </div>
-                    </div>
+                <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Credentials</h4>
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Email</label>
+                    <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminEmail} onChange={e => setFormData({ ...formData, adminEmail: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Passkey</label>
+                    <input type="password" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminPassword} onChange={e => setFormData({ ...formData, adminPassword: e.target.value })} />
                   </div>
                 </div>
               </div>
@@ -251,13 +192,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <h4 className="text-lg font-black text-slate-900 uppercase">Registered Models</h4>
               <div className="flex gap-2">
                 <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Model..." value={newItem} onChange={e => setNewItem(e.target.value)} />
-                <button type="button" onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
+                <button onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
               </div>
               <div className="space-y-2 max-h-64 overflow-auto">
                 {formData.carModels.map((m, i) => (
                   <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
                     <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button type="button" onClick={() => removeItem('carModels', i)} className="text-red-400">✕</button>
+                    <button onClick={() => removeItem('carModels', i)} className="text-red-400">✕</button>
                   </div>
                 ))}
               </div>
@@ -267,13 +208,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <h4 className="text-lg font-black text-slate-900 uppercase">Manufacturing Areas</h4>
               <div className="flex gap-2">
                 <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Shop..." value={newItem} onChange={e => setNewItem(e.target.value)} />
-                <button type="button" onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
+                <button onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
               </div>
               <div className="space-y-2 max-h-64 overflow-auto">
                 {formData.manufacturingShops.map((m, i) => (
                   <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
                     <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button type="button" onClick={() => removeItem('manufacturingShops', i)} className="text-red-400">✕</button>
+                    <button onClick={() => removeItem('manufacturingShops', i)} className="text-red-400">✕</button>
                   </div>
                 ))}
               </div>
@@ -290,12 +231,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               </div>
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Key (ID)</label>
-                <input 
-                  className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20"
-                  placeholder="serial_number" 
-                  value={newColKey} 
-                  onChange={e => setNewColKey(e.target.value)} 
-                />
+                <input className="w-full px-5 py-3 bg-white/10 border border-white/20 rounded-xl font-mono text-sm" placeholder="serial_number" value={newColKey} onChange={e => setNewColKey(e.target.value)} />
               </div>
               <div className="w-full md:w-32">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Type</label>
@@ -304,31 +240,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   <option value="number">Number</option>
                 </select>
               </div>
-              <div className="flex items-center gap-2 mb-2">
-                 <input type="checkbox" id="isPrimary" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="w-4 h-4" />
-                 <label htmlFor="isPrimary" className="text-[10px] font-black uppercase tracking-widest text-slate-400">Primary display</label>
-              </div>
-              <button type="button" onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all">
+              <button onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all">
                 {editingColId ? 'Apply Update' : 'Register Field'}
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {formData.columns.map(col => (
-                <div key={col.id} className={`p-6 rounded-[24px] border border-slate-100 flex flex-col justify-between ${col.isPrimary ? 'bg-blue-50 border-blue-200' : 'bg-white shadow-sm'}`}>
+                <div key={col.id} className={`p-6 rounded-[24px] border border-slate-100 flex flex-col justify-between ${col.isCore ? 'bg-slate-50' : 'bg-white shadow-sm'}`}>
                   <div>
                     <div className="flex items-center justify-between mb-2">
                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{col.type}</span>
-                       {col.isPrimary && <span className="text-[8px] font-black px-2 py-0.5 bg-blue-600 text-white rounded uppercase">Primary</span>}
-                       {col.isCore && <span className="text-[8px] font-black px-2 py-0.5 bg-slate-900 text-white rounded uppercase ml-1">Core</span>}
+                       {col.isCore && <span className="text-[8px] font-black px-2 py-0.5 bg-slate-200 text-slate-500 rounded uppercase">Core Field</span>}
                     </div>
                     <h5 className="text-sm font-black text-slate-900">{col.label}</h5>
                     <p className="text-[10px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
-                  <div className="mt-6 flex gap-2">
-                    <button type="button" onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); setIsPrimary(!!col.isPrimary); }} className="flex-1 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black">EDIT</button>
-                    <button type="button" onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>
-                  </div>
+                  {!col.isCore && (
+                    <div className="mt-6 flex gap-2">
+                      <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); }} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black">EDIT</button>
+                      <button onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -339,8 +272,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-8">
               <div className="p-8 bg-blue-50 rounded-[32px] border border-blue-100">
-                <h4 className="text-xl font-black text-blue-900 uppercase">Cloud Mesh Dashboard</h4>
-                <p className="text-blue-700 text-xs mt-2 font-medium">Link this app to Upstash Redis for global persistence.</p>
+                <h4 className="text-xl font-black text-blue-900 uppercase">Cloud Persistence</h4>
+                <p className="text-blue-700 text-xs mt-2 font-medium">Link this app to an Upstash Redis database to prevent data loss after browser refresh.</p>
               </div>
               
               <div className="space-y-6">
@@ -353,22 +286,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   <input type="password" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Your-Secure-Token" value={dbCreds.token} onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button type="button" onClick={saveDBCreds} disabled={isSyncing} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all">
+                {healthStatus.checked && (
+                  <div className={`p-4 rounded-2xl border flex items-center gap-3 ${healthStatus.success ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                    <div className={`w-2 h-2 rounded-full ${healthStatus.success ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                    <span className="text-[10px] font-black uppercase tracking-widest">{healthStatus.message}</span>
+                  </div>
+                )}
+
+                <div className="flex gap-4">
+                  <button onClick={saveDBCreds} disabled={isSyncing} className="flex-1 py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all">
                     {isSyncing ? 'LINKING...' : 'SAVE & SYNC'}
                   </button>
-                  <button type="button" onClick={forcePull} disabled={isSyncing} className="py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-emerald-700 transition-all">
-                    RECOVER FROM CLOUD
-                  </button>
+                  <button onClick={checkCloudHealth} className="px-6 py-5 bg-slate-100 text-slate-600 rounded-[24px] font-black text-xs border border-slate-200">TEST LINK</button>
                 </div>
-                <button type="button" onClick={forcePush} className="w-full py-4 bg-slate-100 text-slate-400 text-[10px] font-black uppercase rounded-2xl border border-slate-200 hover:text-red-600 hover:border-red-200 transition-colors">Emergency Cloud Override (Push Local)</button>
+                <button onClick={forcePush} className="w-full py-4 text-slate-400 text-[10px] font-black uppercase hover:text-slate-900 transition-colors">Manual Cloud Override (Commit Local to Cloud)</button>
               </div>
             </div>
 
             <div className="bg-slate-50 rounded-[32px] p-8 border border-slate-200 flex flex-col h-[500px]">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Activity Stream</h4>
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Transmission History</h4>
               <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-hide">
-                {storageService.getSessionLogs().map((log, i) => (
+                {storageService.getSessionLogs().length > 0 ? (
+                  storageService.getSessionLogs().map((log, i) => (
                     <div key={i} className={`p-3 rounded-xl border flex items-start justify-between ${log.status === 'SUCCESS' ? 'bg-white border-slate-100' : 'bg-red-50 border-red-100'}`}>
                       <div>
                         <div className="flex items-center gap-2">
@@ -378,7 +317,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                         <span className="text-[8px] text-slate-400 mt-1 block">{new Date(log.timestamp).toLocaleTimeString()}</span>
                       </div>
                     </div>
-                  ))}
+                  ))
+                ) : (
+                  <div className="h-full flex items-center justify-center text-slate-300 text-[10px] font-black uppercase">No Cloud Activity Logged</div>
+                )}
               </div>
             </div>
           </div>
@@ -391,7 +333,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto text-slate-900"><ICONS.Inventory /></div>
                 <h4 className="text-xl font-black text-slate-900 uppercase">Registry Export</h4>
                 <p className="text-slate-500 text-xs font-medium">Download your entire asset database as a structured CSV for offline auditing or Excel analysis.</p>
-                <button type="button" onClick={() => storageService.exportCSV()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">Download Master CSV</button>
+                <button onClick={() => storageService.exportCSV()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">Download Master CSV</button>
               </div>
 
               <div className="p-10 bg-slate-50 rounded-[40px] border border-slate-200 text-center space-y-6">
@@ -418,7 +360,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 <h4 className="text-lg font-black text-red-900 uppercase">Emergency Registry Purge</h4>
                 <p className="text-red-700 text-xs font-medium mt-1">This operation wipes all parts, history, and notifications. This is irreversible unless you have a CSV backup.</p>
               </div>
-              <button type="button" onClick={() => { if(window.confirm("PURGE ALL DATA? Type 'DELETE' to confirm.")) { storageService.wipeAllInventory(); onDataRefresh(); } }} className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all">Wipe Global Registry</button>
+              <button onClick={() => { if(window.confirm("PURGE ALL DATA? Type 'DELETE' to confirm.")) { storageService.wipeAllInventory(); onDataRefresh(); } }} className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all">Wipe Global Registry</button>
             </div>
           </div>
         )}

@@ -26,14 +26,6 @@ const App: React.FC = () => {
   const [cloudStatus, setCloudStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Sync favicon with branding
-  useEffect(() => {
-    const favicon = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-    if (favicon && config.logoUrl) {
-      favicon.href = config.logoUrl;
-    }
-  }, [config.logoUrl]);
-
   const loadData = useCallback(() => {
     const currentConfig = storageService.getConfig();
     setConfig(currentConfig);
@@ -128,10 +120,10 @@ const App: React.FC = () => {
           </div>
         </div>
         <nav className="flex-1 space-y-1">
-          <NavItem id="DASHBOARD" label={config.labels.dashboard} icon={ICONS.Dashboard} />
-          <NavItem id="INVENTORY" label={config.labels.inventory} icon={ICONS.Inventory} />
+          <NavItem id="DASHBOARD" label="Center" icon={ICONS.Dashboard} />
+          <NavItem id="INVENTORY" label="Assets" icon={ICONS.Inventory} />
           <NavItem id="TRANSFERS" label="Transfers" icon={ICONS.Truck} />
-          <NavItem id="SUPPLIERS" label={config.labels.suppliers} icon={ICONS.Suppliers} />
+          <NavItem id="SUPPLIERS" label="Vendors" icon={ICONS.Suppliers} />
           <NavItem id="ALERTS" label="Alerts" icon={ICONS.Alerts} badge={unreadCount} />
           {user.role === 'ADMIN' && <NavItem id="ADMIN" label="System" icon={ICONS.Settings} />}
         </nav>
@@ -152,6 +144,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <h2 className="text-base lg:text-xl font-black text-slate-800 uppercase tracking-tight">{view}</h2>
             
+            {/* Database Indicator */}
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors ${cloudStatus === 'ERROR' ? 'bg-red-50 border-red-100 text-red-600' : dbMode === 'CLOUD' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-amber-50 border-amber-100 text-amber-600'}`}>
                <div className={`w-1.5 h-1.5 rounded-full ${cloudStatus === 'ERROR' ? 'bg-red-500' : dbMode === 'CLOUD' ? 'bg-emerald-500' : 'bg-amber-500'} ${cloudStatus === 'SYNCING' ? 'animate-pulse' : ''}`}></div>
                <span className="text-[9px] font-black uppercase tracking-widest">
