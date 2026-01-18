@@ -118,7 +118,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       const oldCol = formData.columns.find(c => c.id === editingColId);
       if (!oldCol) return;
 
-      // Handle Key Migration
       if (finalKey !== editingColId) {
         const warningMessage = oldCol.isCore 
           ? `WARNING: You are changing a CORE SYSTEM KEY ("${editingColId}" -> "${finalKey}"). This will migrate all data to the new key. Proceed?`
@@ -130,11 +129,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       }
 
       const updatedColumns: ColumnDefinition[] = formData.columns.map(col => {
-        let updatedCol: ColumnDefinition = col.id === editingColId 
-          ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary } 
+        const isTarget = col.id === editingColId;
+        const updatedCol: ColumnDefinition = isTarget 
+          ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary: !!isPrimary } 
           : { ...col };
         
-        // Ensure only one primary column exists
         if (isPrimary && updatedCol.id !== finalKey) {
           updatedCol.isPrimary = false;
         }
@@ -146,7 +145,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       onDataRefresh();
     } else {
       if (formData.columns.some(c => c.id === finalKey)) return alert("System ID collision detected.");
-      const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary };
+      const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary: !!isPrimary };
       
       let updatedColumns: ColumnDefinition[];
       if (isPrimary) {

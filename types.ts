@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   username: string;
@@ -20,7 +19,7 @@ export interface ColumnDefinition {
   label: string;
   type: 'text' | 'number';
   isCore?: boolean;
-  isPrimary?: boolean; // New flag to identify the main display column (e.g. Name)
+  isPrimary?: boolean; 
 }
 
 export type PartLocation = 'SUPPLIER' | 'WAREHOUSE' | 'BODY_SHOP' | 'FE' | 'RF' | 'FF' | 'UB' | 'SF';

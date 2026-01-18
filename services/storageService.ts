@@ -26,8 +26,8 @@ interface CloudLog {
 
 const syncChannel = new BroadcastChannel('partflow_mesh_sync');
 let sessionLogs: CloudLog[] = [];
+let hasPerformedInitialPull = false;
 
-// Improved check for various environment variable formats
 const getEnv = (key: string): string | undefined => {
   return (process.env[key] as string) || 
          (import.meta as any).env?.[`VITE_${key}`] || 
@@ -69,6 +69,7 @@ export const storageService = {
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
+    hasPerformedInitialPull = false;
     storageService.notifySync();
   },
 
@@ -127,12 +128,12 @@ export const storageService = {
       if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
       
       const data = await response.json();
+      hasPerformedInitialPull = true; // Mark that we've at least heard from the cloud
       
-      // If Cloud is empty but local has data, seed the cloud.
       if (!data.result) {
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
-          console.log("[Storage] Cloud empty, local has data. Seeding...");
+          console.log("[Storage] Cloud empty, seeding from local data...");
           const pushed = await storageService.pushToCloud();
           return { success: pushed, mode: 'CLOUD' };
         }
@@ -143,9 +144,8 @@ export const storageService = {
       const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
       const remoteUpdatedAt = remoteState.lastPushAt || 0;
 
-      // Pull if remote is newer OR if we are forcing a pull
       if (remoteUpdatedAt > localUpdatedAt || force) {
-        console.log("[Storage] Cloud sync in progress...");
+        console.log("[Storage] Pulling remote state updates...");
         if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
         if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
         if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
@@ -165,11 +165,14 @@ export const storageService = {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
 
+    // CRITICAL SAFETY: Prevent pushing empty local data if we haven't successfully pulled once.
+    if (!hasPerformedInitialPull) {
+      console.warn("[Storage] Blocked push to cloud: Initial pull not yet verified.");
+      return false;
+    }
+
     try {
       const parts = storageService.getParts();
-      // Safety: Never push empty state to cloud automatically if cloud previously had data
-      // (Simplified check for this implementation)
-
       const timestamp = Date.now();
       const payload = {
         parts: parts,
@@ -194,7 +197,6 @@ export const storageService = {
         sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud.' });
         return true;
       } else {
-        const errorText = await response.text();
         sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Rejected: ${response.status}` });
         return false;
       }
