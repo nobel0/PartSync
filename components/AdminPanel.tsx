@@ -129,11 +129,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         } else return;
       }
 
-      const updatedColumns = formData.columns.map(col => {
-        let update = col.id === editingColId ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary } : col;
+      const updatedColumns: ColumnDefinition[] = formData.columns.map(col => {
+        let updatedCol: ColumnDefinition = col.id === editingColId 
+          ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary } 
+          : { ...col };
+        
         // Ensure only one primary column exists
-        if (isPrimary && update.id !== finalKey) update.isPrimary = false;
-        return update;
+        if (isPrimary && updatedCol.id !== finalKey) {
+          updatedCol.isPrimary = false;
+        }
+        return updatedCol;
       });
       
       setFormData({ ...formData, columns: updatedColumns });
@@ -142,9 +147,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     } else {
       if (formData.columns.some(c => c.id === finalKey)) return alert("System ID collision detected.");
       const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary };
-      const updatedColumns = isPrimary 
-        ? formData.columns.map(c => ({...c, isPrimary: false})).concat(newCol)
-        : [...formData.columns, newCol];
+      
+      let updatedColumns: ColumnDefinition[];
+      if (isPrimary) {
+        updatedColumns = formData.columns.map(c => ({ ...c, isPrimary: false } as ColumnDefinition));
+        updatedColumns.push(newCol);
+      } else {
+        updatedColumns = [...formData.columns, newCol];
+      }
+      
       setFormData({ ...formData, columns: updatedColumns });
     }
     
@@ -226,7 +237,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                        </div>
                        <div className="flex-1">
                           <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Logo Resource URL</label>
-                          <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="https://..." value={formData.logoUrl} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
+                          <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="https://..." value={formData.logoUrl || ''} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
                        </div>
                     </div>
                   </div>
@@ -241,13 +252,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <h4 className="text-lg font-black text-slate-900 uppercase">Registered Models</h4>
               <div className="flex gap-2">
                 <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Model..." value={newItem} onChange={e => setNewItem(e.target.value)} />
-                <button onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
+                <button type="button" onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
               </div>
               <div className="space-y-2 max-h-64 overflow-auto">
                 {formData.carModels.map((m, i) => (
                   <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
                     <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button onClick={() => removeItem('carModels', i)} className="text-red-400">✕</button>
+                    <button type="button" onClick={() => removeItem('carModels', i)} className="text-red-400">✕</button>
                   </div>
                 ))}
               </div>
@@ -257,13 +268,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <h4 className="text-lg font-black text-slate-900 uppercase">Manufacturing Areas</h4>
               <div className="flex gap-2">
                 <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Shop..." value={newItem} onChange={e => setNewItem(e.target.value)} />
-                <button onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
+                <button type="button" onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
               </div>
               <div className="space-y-2 max-h-64 overflow-auto">
                 {formData.manufacturingShops.map((m, i) => (
                   <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
                     <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button onClick={() => removeItem('manufacturingShops', i)} className="text-red-400">✕</button>
+                    <button type="button" onClick={() => removeItem('manufacturingShops', i)} className="text-red-400">✕</button>
                   </div>
                 ))}
               </div>
@@ -281,7 +292,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Key (ID)</label>
                 <input 
-                  className={`w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20`} 
+                  className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20"
                   placeholder="serial_number" 
                   value={newColKey} 
                   onChange={e => setNewColKey(e.target.value)} 
@@ -298,7 +309,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                  <input type="checkbox" id="isPrimary" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="w-4 h-4" />
                  <label htmlFor="isPrimary" className="text-[10px] font-black uppercase tracking-widest text-slate-400">Primary display</label>
               </div>
-              <button onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all">
+              <button type="button" onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all">
                 {editingColId ? 'Apply Update' : 'Register Field'}
               </button>
             </div>
@@ -316,8 +327,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     <p className="text-[10px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
                   <div className="mt-6 flex gap-2">
-                    <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); setIsPrimary(!!col.isPrimary); }} className="flex-1 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black">EDIT</button>
-                    <button onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>
+                    <button type="button" onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); setIsPrimary(!!col.isPrimary); }} className="flex-1 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black">EDIT</button>
+                    <button type="button" onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>
                   </div>
                 </div>
               ))}
@@ -344,14 +355,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button onClick={saveDBCreds} disabled={isSyncing} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all">
+                  <button type="button" onClick={saveDBCreds} disabled={isSyncing} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all">
                     {isSyncing ? 'LINKING...' : 'SAVE & SYNC'}
                   </button>
-                  <button onClick={forcePull} disabled={isSyncing} className="py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-emerald-700 transition-all">
+                  <button type="button" onClick={forcePull} disabled={isSyncing} className="py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-emerald-700 transition-all">
                     RECOVER FROM CLOUD
                   </button>
                 </div>
-                <button onClick={forcePush} className="w-full py-4 bg-slate-100 text-slate-400 text-[10px] font-black uppercase rounded-2xl border border-slate-200 hover:text-red-600 hover:border-red-200 transition-colors">Emergency Cloud Override (Push Local)</button>
+                <button type="button" onClick={forcePush} className="w-full py-4 bg-slate-100 text-slate-400 text-[10px] font-black uppercase rounded-2xl border border-slate-200 hover:text-red-600 hover:border-red-200 transition-colors">Emergency Cloud Override (Push Local)</button>
               </div>
             </div>
 
@@ -381,7 +392,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto text-slate-900"><ICONS.Inventory /></div>
                 <h4 className="text-xl font-black text-slate-900 uppercase">Registry Export</h4>
                 <p className="text-slate-500 text-xs font-medium">Download your entire asset database as a structured CSV for offline auditing or Excel analysis.</p>
-                <button onClick={() => storageService.exportCSV()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">Download Master CSV</button>
+                <button type="button" onClick={() => storageService.exportCSV()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">Download Master CSV</button>
               </div>
 
               <div className="p-10 bg-slate-50 rounded-[40px] border border-slate-200 text-center space-y-6">
@@ -408,7 +419,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 <h4 className="text-lg font-black text-red-900 uppercase">Emergency Registry Purge</h4>
                 <p className="text-red-700 text-xs font-medium mt-1">This operation wipes all parts, history, and notifications. This is irreversible unless you have a CSV backup.</p>
               </div>
-              <button onClick={() => { if(window.confirm("PURGE ALL DATA? Type 'DELETE' to confirm.")) { storageService.wipeAllInventory(); onDataRefresh(); } }} className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all">Wipe Global Registry</button>
+              <button type="button" onClick={() => { if(window.confirm("PURGE ALL DATA? Type 'DELETE' to confirm.")) { storageService.wipeAllInventory(); onDataRefresh(); } }} className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all">Wipe Global Registry</button>
             </div>
           </div>
         )}
