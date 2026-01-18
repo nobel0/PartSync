@@ -21,6 +21,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   const [newColLabel, setNewColLabel] = useState('');
   const [newColKey, setNewColKey] = useState('');
   const [newColType, setNewColType] = useState<'text' | 'number'>('text');
+  const [isPrimary, setIsPrimary] = useState(false);
 
   useEffect(() => {
     const current = storageService.getDBCredentials();
@@ -36,6 +37,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setIsSyncing(true);
     const result = await storageService.testConnection();
     setHealthStatus({ checked: true, ...result });
+    setIsSyncing(false);
+  };
+
+  const forcePull = async () => {
+    if (!window.confirm("WARNING: This will overwrite your current local session data with the cloud master registry. Proceed?")) return;
+    setIsSyncing(true);
+    const { success } = await storageService.syncWithCloud(true);
+    if (success) {
+      alert("✅ Registry recovered from cloud.");
+      onDataRefresh();
+    } else {
+      alert("❌ Cloud recovery failed.");
+    }
     setIsSyncing(false);
   };
 
@@ -63,6 +77,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   };
 
   const forcePush = async () => {
+    if (!window.confirm("WARNING: This will push your local session data to the cloud, potentially overwriting other users' changes. Proceed?")) return;
     setIsSyncing(true);
     const success = await storageService.pushToCloud();
     if (success) {
@@ -88,7 +103,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   const addOrUpdateColumn = () => {
     if (!newColLabel.trim() || !newColKey.trim()) return;
-    const finalKey = newColKey.trim(); // Removed aggressive regex to allow more flexibility if needed
+    const finalKey = newColKey.trim();
     
     if (editingColId) {
       const oldCol = formData.columns.find(c => c.id === editingColId);
@@ -100,20 +115,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         } else return;
       }
 
-      const updatedColumns = formData.columns.map(col => 
-        col.id === editingColId ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType } : col
-      );
+      const updatedColumns = formData.columns.map(col => {
+        let update = col.id === editingColId ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary } : col;
+        // Ensure only one primary column exists
+        if (isPrimary && update.id !== finalKey) update.isPrimary = false;
+        return update;
+      });
       
       setFormData({ ...formData, columns: updatedColumns });
       setEditingColId(null);
       onDataRefresh();
     } else {
       if (formData.columns.some(c => c.id === finalKey)) return alert("System ID collision detected.");
-      const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false };
-      setFormData({ ...formData, columns: [...formData.columns, newCol] });
+      const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary };
+      const updatedColumns = isPrimary 
+        ? formData.columns.map(c => ({...c, isPrimary: false})).concat(newCol)
+        : [...formData.columns, newCol];
+      setFormData({ ...formData, columns: updatedColumns });
     }
     
-    setNewColLabel(''); setNewColKey(''); setNewColType('text');
+    setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimary(false);
   };
 
   const removeColumn = (id: string) => {
@@ -191,56 +212,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                        </div>
                     </div>
                   </div>
-
-                  <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Credentials</h4>
-                    <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Email</label>
-                      <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminEmail} onChange={e => setFormData({ ...formData, adminEmail: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Passkey</label>
-                      <input type="password" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminPassword} onChange={e => setFormData({ ...formData, adminPassword: e.target.value })} />
-                    </div>
-                  </div>
                 </div>
               </div>
-          </div>
-        )}
-
-        {activeTab === 'REGISTRY' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
-            <div className="space-y-6">
-              <h4 className="text-lg font-black text-slate-900 uppercase">Registered Models</h4>
-              <div className="flex gap-2">
-                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Model..." value={newItem} onChange={e => setNewItem(e.target.value)} />
-                <button onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
-              </div>
-              <div className="space-y-2 max-h-64 overflow-auto">
-                {formData.carModels.map((m, i) => (
-                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                    <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button onClick={() => removeItem('carModels', i)} className="text-red-400">✕</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="space-y-6">
-              <h4 className="text-lg font-black text-slate-900 uppercase">Manufacturing Areas</h4>
-              <div className="flex gap-2">
-                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Add Shop..." value={newItem} onChange={e => setNewItem(e.target.value)} />
-                <button onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-xs">Add</button>
-              </div>
-              <div className="space-y-2 max-h-64 overflow-auto">
-                {formData.manufacturingShops.map((m, i) => (
-                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                    <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button onClick={() => removeItem('manufacturingShops', i)} className="text-red-400">✕</button>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
@@ -262,6 +235,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   <option value="number">Number</option>
                 </select>
               </div>
+              <div className="flex items-center gap-2 mb-2">
+                 <input type="checkbox" id="isPrimary" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="w-4 h-4" />
+                 <label htmlFor="isPrimary" className="text-[10px] font-black uppercase tracking-widest text-slate-400">Primary display</label>
+              </div>
               <button onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all">
                 {editingColId ? 'Apply Update' : 'Register Field'}
               </button>
@@ -269,17 +246,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {formData.columns.map(col => (
-                <div key={col.id} className={`p-6 rounded-[24px] border border-slate-100 flex flex-col justify-between ${col.isCore ? 'bg-slate-50 border-blue-100 shadow-blue-50 shadow-lg' : 'bg-white shadow-sm'}`}>
+                <div key={col.id} className={`p-6 rounded-[24px] border border-slate-100 flex flex-col justify-between ${col.isPrimary ? 'bg-blue-50 border-blue-200' : 'bg-white shadow-sm'}`}>
                   <div>
                     <div className="flex items-center justify-between mb-2">
                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{col.type}</span>
-                       {col.isCore && <span className="text-[8px] font-black px-2 py-0.5 bg-blue-100 text-blue-700 rounded uppercase">Core System Field</span>}
+                       {col.isPrimary && <span className="text-[8px] font-black px-2 py-0.5 bg-blue-600 text-white rounded uppercase">Primary</span>}
                     </div>
                     <h5 className="text-sm font-black text-slate-900">{col.label}</h5>
                     <p className="text-[10px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
                   <div className="mt-6 flex gap-2">
-                    <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); }} className="flex-1 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black">EDIT</button>
+                    <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); setIsPrimary(!!col.isPrimary); }} className="flex-1 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black">EDIT</button>
                     {!col.isCore && <button onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>}
                   </div>
                 </div>
@@ -292,8 +269,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-8">
               <div className="p-8 bg-blue-50 rounded-[32px] border border-blue-100">
-                <h4 className="text-xl font-black text-blue-900 uppercase">Cloud Persistence</h4>
-                <p className="text-blue-700 text-xs mt-2 font-medium">Link this app to an Upstash Redis database to prevent data loss after browser refresh.</p>
+                <h4 className="text-xl font-black text-blue-900 uppercase">Cloud Mesh Dashboard</h4>
+                <p className="text-blue-700 text-xs mt-2 font-medium">Link this app to Upstash Redis for global persistence.</p>
               </div>
               
               <div className="space-y-6">
@@ -306,28 +283,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   <input type="password" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Your-Secure-Token" value={dbCreds.token} onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} />
                 </div>
 
-                {healthStatus.checked && (
-                  <div className={`p-4 rounded-2xl border flex items-center gap-3 ${healthStatus.success ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                    <div className={`w-2 h-2 rounded-full ${healthStatus.success ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                    <span className="text-[10px] font-black uppercase tracking-widest">{healthStatus.message}</span>
-                  </div>
-                )}
-
-                <div className="flex gap-4">
-                  <button onClick={saveDBCreds} disabled={isSyncing} className="flex-1 py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button onClick={saveDBCreds} disabled={isSyncing} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-blue-700 transition-all">
                     {isSyncing ? 'LINKING...' : 'SAVE & SYNC'}
                   </button>
-                  <button onClick={checkCloudHealth} className="px-6 py-5 bg-slate-100 text-slate-600 rounded-[24px] font-black text-xs border border-slate-200">TEST LINK</button>
+                  <button onClick={forcePull} disabled={isSyncing} className="py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-emerald-700 transition-all">
+                    RECOVER FROM CLOUD
+                  </button>
                 </div>
-                <button onClick={forcePush} className="w-full py-4 text-slate-400 text-[10px] font-black uppercase hover:text-slate-900 transition-colors">Manual Cloud Override (Commit Local to Cloud)</button>
+                <button onClick={forcePush} className="w-full py-4 bg-slate-100 text-slate-400 text-[10px] font-black uppercase rounded-2xl border border-slate-200 hover:text-red-600 hover:border-red-200 transition-colors">Emergency Cloud Override (Push Local)</button>
               </div>
             </div>
 
             <div className="bg-slate-50 rounded-[32px] p-8 border border-slate-200 flex flex-col h-[500px]">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Transmission History</h4>
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Activity Stream</h4>
               <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-hide">
-                {storageService.getSessionLogs().length > 0 ? (
-                  storageService.getSessionLogs().map((log, i) => (
+                {storageService.getSessionLogs().map((log, i) => (
                     <div key={i} className={`p-3 rounded-xl border flex items-start justify-between ${log.status === 'SUCCESS' ? 'bg-white border-slate-100' : 'bg-red-50 border-red-100'}`}>
                       <div>
                         <div className="flex items-center gap-2">
@@ -337,50 +308,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                         <span className="text-[8px] text-slate-400 mt-1 block">{new Date(log.timestamp).toLocaleTimeString()}</span>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="h-full flex items-center justify-center text-slate-300 text-[10px] font-black uppercase">No Cloud Activity Logged</div>
-                )}
+                  ))}
               </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'DATA' && (
-          <div className="max-w-4xl space-y-12">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="p-10 bg-slate-50 rounded-[40px] border border-slate-200 text-center space-y-6">
-                <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto text-slate-900"><ICONS.Inventory /></div>
-                <h4 className="text-xl font-black text-slate-900 uppercase">Registry Export</h4>
-                <p className="text-slate-500 text-xs font-medium">Download your entire asset database as a structured CSV for offline auditing or Excel analysis.</p>
-                <button onClick={() => storageService.exportCSV()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">Download Master CSV</button>
-              </div>
-
-              <div className="p-10 bg-slate-50 rounded-[40px] border border-slate-200 text-center space-y-6">
-                <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto text-blue-600"><ICONS.Plus /></div>
-                <h4 className="text-xl font-black text-slate-900 uppercase">Bulk Ingestion</h4>
-                <p className="text-slate-500 text-xs font-medium">Upload a CSV file with headers matching your current system schema to import new assets in bulk.</p>
-                <label className="block w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest cursor-pointer hover:bg-blue-700 transition-all">
-                  Upload CSV Source
-                  <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const text = await file.text();
-                      await storageService.importCSV(text);
-                      onDataRefresh();
-                      alert("Import process complete.");
-                    }
-                  }} />
-                </label>
-              </div>
-            </div>
-
-            <div className="p-10 bg-red-50 rounded-[40px] border border-red-100 flex items-center justify-between">
-              <div className="max-w-md">
-                <h4 className="text-lg font-black text-red-900 uppercase">Emergency Registry Purge</h4>
-                <p className="text-red-700 text-xs font-medium mt-1">This operation wipes all parts, history, and notifications. This is irreversible unless you have a CSV backup.</p>
-              </div>
-              <button onClick={() => { if(window.confirm("PURGE ALL DATA? Type 'DELETE' to confirm.")) { storageService.wipeAllInventory(); onDataRefresh(); } }} className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all">Wipe Global Registry</button>
             </div>
           </div>
         )}

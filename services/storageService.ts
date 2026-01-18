@@ -38,7 +38,6 @@ const isValidEnv = (val: any) => val && typeof val === 'string' && val !== 'unde
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
-    // 1. Try System Env Vars (highest priority)
     const envUrl = getEnv('UPSTASH_REDIS_REST_URL');
     const envToken = getEnv('UPSTASH_REDIS_REST_TOKEN');
     
@@ -49,7 +48,6 @@ export const storageService = {
       };
     }
 
-    // 2. Fallback to Local Storage
     const stored = localStorage.getItem(DB_CRED_KEY);
     if (stored) {
       try {
@@ -117,12 +115,11 @@ export const storageService = {
 
   getSessionLogs: () => sessionLogs,
 
-  syncWithCloud: async (): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
+  syncWithCloud: async (force: boolean = false): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
     const creds = storageService.getDBCredentials();
     if (!creds) return { success: true, mode: 'LOCAL' };
 
     try {
-      console.log("[Storage] Attempting Cloud Pull...");
       const response = await fetch(`${creds.url}/get/${MASTER_DB_KEY}`, {
         headers: { Authorization: `Bearer ${creds.token}` }
       });
@@ -131,32 +128,34 @@ export const storageService = {
       
       const data = await response.json();
       
-      // Handle the case where the cloud is completely empty
+      // SAFETY CHECK: If Cloud is empty but local has data, seed the cloud.
+      // If BOTH are empty, just return.
       if (!data.result) {
-        console.log("[Storage] Cloud is empty. Initializing Seed Push...");
-        const pushed = await storageService.pushToCloud();
-        return { success: pushed, mode: 'CLOUD' };
+        const localParts = storageService.getParts();
+        if (localParts.length > 0) {
+          console.log("[Storage] Cloud empty, local has data. Seeding...");
+          const pushed = await storageService.pushToCloud();
+          return { success: pushed, mode: 'CLOUD' };
+        }
+        return { success: true, mode: 'CLOUD' };
       }
 
       const remoteState = JSON.parse(data.result);
       const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
       const remoteUpdatedAt = remoteState.lastPushAt || 0;
 
-      if (remoteUpdatedAt > localUpdatedAt) {
-        console.log("[Storage] Cloud is newer. Updating local state.");
+      // Pull if remote is newer OR if we are forcing a pull
+      if (remoteUpdatedAt > localUpdatedAt || force) {
         if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
         if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
         if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
         if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
         localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
         storageService.notifySync();
-        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: 'Remote registry merged.' });
-      } else {
-        console.log("[Storage] Local state is up to date.");
+        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: force ? 'Force pull complete.' : 'Remote registry merged.' });
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
-      console.error("[Storage] Sync Error:", e);
       sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'ERROR', message: String(e) });
       return { success: false, mode: 'LOCAL' };
     }
@@ -167,7 +166,6 @@ export const storageService = {
     if (!creds) return false;
 
     try {
-      console.log("[Storage] Initiating Cloud Push...");
       const timestamp = Date.now();
       const payload = {
         parts: storageService.getParts(),
@@ -190,15 +188,13 @@ export const storageService = {
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
         sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud.' });
-        console.log("[Storage] Push successful.");
         return true;
       } else {
         const errorText = await response.text();
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Rejected: ${response.status} - ${errorText.substring(0, 20)}` });
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Rejected: ${response.status}` });
         return false;
       }
     } catch (e) {
-      console.error("[Storage] Push Network Error:", e);
       sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Mesh connection lost.' });
       return false;
     }
@@ -235,7 +231,7 @@ export const storageService = {
       requiredFields: ['partNumber', 'name', 'currentStock'],
       columns: [
         { id: 'partNumber', label: 'Reference ID', type: 'text', isCore: true },
-        { id: 'name', label: 'Part Name', type: 'text', isCore: true },
+        { id: 'name', label: 'Part Name', type: 'text', isCore: true, isPrimary: true },
         { id: 'manufacturingShop', label: 'Assigned Shop', type: 'text', isCore: true },
         { id: 'currentLocation', label: 'Current Location', type: 'text', isCore: true },
         { id: 'carModel', label: 'Car Model', type: 'text', isCore: true },
