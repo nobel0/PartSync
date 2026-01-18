@@ -90,23 +90,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   const addItem = (type: 'carModels' | 'manufacturingShops') => {
     if (!newItem.trim()) return;
-    const currentList = formData[type] as string[];
+    const currentList = formData[type];
     if (currentList.includes(newItem.trim())) return alert("Item already exists.");
     
-    const updated = { ...formData };
-    (updated[type] as string[]) = [...currentList, newItem.trim()];
-    setFormData(updated);
+    setFormData(prev => ({
+      ...prev,
+      [type]: [...currentList, newItem.trim()]
+    }));
     setNewItem('');
   };
 
   const removeItem = (type: 'carModels' | 'manufacturingShops', index: number) => {
-    const currentList = formData[type] as string[];
-    const updatedList = [...currentList];
+    const updatedList = [...formData[type]];
     updatedList.splice(index, 1);
     
-    const updated = { ...formData };
-    (updated[type] as string[]) = updatedList;
-    setFormData(updated);
+    setFormData(prev => ({
+      ...prev,
+      [type]: updatedList
+    }));
   };
 
   const addOrUpdateColumn = () => {
@@ -119,11 +120,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
       // Handle Key Migration
       if (finalKey !== editingColId) {
-        if (oldCol.isCore) {
-          alert("CORE SYSTEM KEY cannot be renamed. You can only change the display label for this field.");
-          return;
-        }
-        if (window.confirm(`Renaming Key "${editingColId}" to "${finalKey}" will migrate all existing inventory data to this new property ID. Proceed?`)) {
+        const warningMessage = oldCol.isCore 
+          ? `WARNING: You are changing a CORE SYSTEM KEY ("${editingColId}" -> "${finalKey}"). This will migrate all data to the new key. Proceed?`
+          : `Renaming Key "${editingColId}" to "${finalKey}" will migrate all existing inventory data. Proceed?`;
+          
+        if (window.confirm(warningMessage)) {
           storageService.migratePartKey(editingColId, finalKey);
         } else return;
       }
@@ -152,7 +153,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   const removeColumn = (id: string) => {
     const col = formData.columns.find(c => c.id === id);
-    if (col?.isCore) return alert("Cannot delete core system fields.");
+    if (col?.isCore) {
+      if (!window.confirm("CRITICAL: This is a CORE SYSTEM field. Deleting it might break built-in logic. Are you absolutely sure?")) return;
+    }
     if (window.confirm("Permanently delete this column? Data associated with this field in existing parts will be purged.")) {
       setFormData({ ...formData, columns: formData.columns.filter(c => c.id !== id) });
       storageService.clearColumnData(id);
@@ -278,8 +281,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Key (ID)</label>
                 <input 
-                  disabled={editingColId ? formData.columns.find(c => c.id === editingColId)?.isCore : false}
-                  className={`w-full px-5 py-3 border rounded-xl font-mono text-sm ${editingColId && formData.columns.find(c => c.id === editingColId)?.isCore ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent' : 'bg-white/10 border-white/20'}`} 
+                  className={`w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20`} 
                   placeholder="serial_number" 
                   value={newColKey} 
                   onChange={e => setNewColKey(e.target.value)} 
@@ -315,7 +317,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   </div>
                   <div className="mt-6 flex gap-2">
                     <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); setIsPrimary(!!col.isPrimary); }} className="flex-1 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black">EDIT</button>
-                    {!col.isCore && <button onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>}
+                    <button onClick={() => removeColumn(col.id)} className="p-2 bg-red-50 text-red-500 rounded-lg">✕</button>
                   </div>
                 </div>
               ))}
