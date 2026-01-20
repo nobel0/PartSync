@@ -57,6 +57,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setIsSyncing(false);
   };
 
+  const forcePush = async () => {
+    if (!window.confirm("CRITICAL: You are about to commit local data to the cloud. This will overwrite any remote data with your current session. Proceed?")) return;
+    setIsSyncing(true);
+    const success = await storageService.pushToCloud();
+    if (success) {
+      alert("✅ Local state committed to cloud master.");
+    } else {
+      alert("❌ Push failed. Verify cloud link.");
+    }
+    setIsSyncing(false);
+  };
+
   const saveDBCreds = async () => {
     if (!dbCreds.url || !dbCreds.token) {
       storageService.setDBCredentials(null);
@@ -76,18 +88,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       onDataRefresh();
     } else {
       alert(`❌ Connection issue: ${health.message}`);
-    }
-    setIsSyncing(false);
-  };
-
-  const forcePush = async () => {
-    if (!window.confirm("WARNING: This will push your local session data to the cloud, potentially overwriting other users' changes. Proceed?")) return;
-    setIsSyncing(true);
-    const success = await storageService.pushToCloud();
-    if (success) {
-      alert("Manual cloud push confirmed. State committed.");
-    } else {
-      alert("Push failed. Check connection logs.");
     }
     setIsSyncing(false);
   };
@@ -352,10 +352,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     RECOVER FROM CLOUD
                   </button>
                 </div>
+                <div className="pt-6 border-t border-slate-100 mt-6">
+                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Manual Synchronization</h5>
+                  <button type="button" onClick={forcePush} disabled={isSyncing} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3">
+                    <ICONS.Dashboard /> PUSH LOCAL DATA TO CLOUD
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="bg-slate-50 rounded-[32px] p-8 border border-slate-200 flex flex-col h-[500px]">
+            <div className="bg-slate-50 rounded-[32px] p-8 border border-slate-200 flex flex-col h-[600px]">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Activity Stream</h4>
               <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-hide">
                 {storageService.getSessionLogs().map((log, i) => (

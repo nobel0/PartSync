@@ -85,8 +85,14 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
       <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden relative border border-white/20">
         <div className="p-10 lg:p-12">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-20 h-20 bg-slate-900 rounded-3xl shadow-xl mb-6 flex items-center justify-center overflow-hidden">
-               {config.logoUrl ? <img src={config.logoUrl} className="max-w-[70%] max-h-[70%] object-contain" alt="Logo" /> : <ICONS.Inventory />}
+            <div className="w-24 h-24 mb-6 flex items-center justify-center overflow-hidden">
+               {config.logoUrl ? (
+                 <img src={config.logoUrl} className="max-w-full max-h-full object-contain" alt="Logo" />
+               ) : (
+                 <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-white">
+                   <ICONS.Inventory />
+                 </div>
+               )}
             </div>
             <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight text-center leading-none">{config.appName}</h1>
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-3 text-center">Cloud Mesh Terminal</p>
