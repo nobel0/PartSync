@@ -2,6 +2,7 @@ import React from 'react';
 import { Part, AppConfig, User } from '../types';
 import { ICONS, LOW_STOCK_THRESHOLD } from '../constants';
 import { storageService } from '../services/storageService';
+import { EditableLabel } from '../App';
 
 interface InventorySheetProps {
   parts: Part[];
@@ -10,9 +11,10 @@ interface InventorySheetProps {
   onEdit: (part: Part) => void;
   onReceive: (id: string, qty: number) => void;
   onDataRefresh: () => void;
+  onUpdateConfig: (config: AppConfig) => void;
 }
 
-const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, onEdit, onReceive, onDataRefresh }) => {
+const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, onEdit, onReceive, onDataRefresh, onUpdateConfig }) => {
   const handleDelete = (id: string) => {
     if (window.confirm("Permanent Asset Deletion? Data recovery will require a previous CSV restore.")) {
       storageService.deletePart(id);
@@ -24,6 +26,11 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
     return user.role === 'ADMIN' || user.assignedLine === partLine;
   };
 
+  const handleUpdateColumnLabel = (id: string, newLabel: string) => {
+    const updatedColumns = config.columns.map(col => col.id === id ? { ...col, label: newLabel } : col);
+    onUpdateConfig({ ...config, columns: updatedColumns });
+  };
+
   return (
     <div className="bg-white rounded-[24px] lg:rounded-[32px] border border-slate-200 shadow-xl overflow-hidden flex flex-col h-full max-h-[calc(100vh-180px)] lg:max-h-[calc(100vh-280px)]">
       <div className="overflow-x-auto scrollbar-hide flex-1">
@@ -32,7 +39,13 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
             <tr className="bg-slate-900 text-white">
               {config.columns.map(col => (
                 <th key={col.id} className="px-4 lg:px-6 py-4 lg:py-5 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap">
-                  {col.label}
+                  <EditableLabel 
+                    text={col.label} 
+                    onSave={(v) => handleUpdateColumnLabel(col.id, v)} 
+                    currentUser={user}
+                    adminOnly
+                    className="text-white"
+                  />
                 </th>
               ))}
               <th className="px-4 lg:px-6 py-4 lg:py-5 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] text-right sticky right-0 bg-slate-900">CMD</th>
@@ -77,9 +90,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                       <button onClick={() => onEdit(part)} className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"><ICONS.Settings /></button>
                       <button onClick={() => handleDelete(part.id)} className="p-2 bg-red-50 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition-colors">✕</button>
                     </div>
-                    {!hasPermission && (
-                       <span className="text-[8px] font-black text-slate-300 uppercase">ReadOnly</span>
-                    )}
+                    {!hasPermission && <span className="text-[8px] font-black text-slate-300 uppercase">ReadOnly</span>}
                   </td>
                 </tr>
               );

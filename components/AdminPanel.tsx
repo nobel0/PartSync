@@ -12,12 +12,15 @@ interface AdminPanelProps {
 const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRefresh }) => {
   const [formData, setFormData] = useState<AppConfig>({ ...config });
   const [activeTab, setActiveTab] = useState<'VISUALS' | 'REGISTRY' | 'COLUMNS' | 'WORDING' | 'CLOUD' | 'DATA'>('VISUALS');
+  
   const [newModelItem, setNewModelItem] = useState('');
   const [newShopItem, setNewShopItem] = useState('');
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [healthStatus, setHealthStatus] = useState<{ checked: boolean; success: boolean; message: string }>({ checked: false, success: false, message: '' });
   
   const [dbCreds, setDbCreds] = useState({ url: '', token: '' });
+  
   const [editingColId, setEditingColId] = useState<string | null>(null);
   const [newColLabel, setNewColLabel] = useState('');
   const [newColKey, setNewColKey] = useState('');
@@ -102,7 +105,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       ...prev,
       [type]: [...prev[type], val.trim()]
     }));
-    if (type === 'carModels') setNewModelItem(''); else setNewShopItem('');
+    
+    if (type === 'carModels') setNewModelItem(''); 
+    else setNewShopItem('');
   };
 
   const removeItem = (type: 'carModels' | 'manufacturingShops', index: number) => {
@@ -117,7 +122,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setNewColKey(col.id);
     setNewColType(col.type);
     setIsPrimary(!!col.isPrimary);
-    // Scroll to form
     const formElement = document.getElementById('schema-form');
     if (formElement) formElement.scrollIntoView({ behavior: 'smooth' });
   };
@@ -145,12 +149,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       updatedColumns.push(newCol);
       setFormData({ ...formData, columns: updatedColumns });
     }
-    // Reset form
     setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimary(false);
   };
 
   const removeColumn = (id: string) => {
-    if (window.confirm("Purge column?")) {
+    if (window.confirm("Purge column? This action will hide data associated with this field.")) {
       setFormData({ ...formData, columns: formData.columns.filter(c => c.id !== id) });
       storageService.clearColumnData(id);
       onDataRefresh();
@@ -208,8 +211,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Logo</h4>
                   <div className="flex items-center gap-6">
-                     <div className="w-24 h-24 bg-white rounded-3xl border flex items-center justify-center overflow-hidden shadow-sm relative">
-                        {formData.logoUrl ? <img src={formData.logoUrl} className="max-w-[80%] max-h-[80%] object-contain" alt="Preview" /> : <div className="text-[10px] font-black text-slate-300">NO LOGO</div>}
+                     <div className="w-24 h-24 bg-transparent rounded-3xl border border-dashed border-slate-200 flex items-center justify-center overflow-hidden shadow-sm relative">
+                        {formData.logoUrl ? <img src={formData.logoUrl} className="max-w-[90%] max-h-[90%] object-contain" alt="Preview" /> : <div className="text-[10px] font-black text-slate-300">NO LOGO</div>}
                      </div>
                      <div className="flex-1 space-y-3">
                         <label className="block w-full py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black text-center uppercase tracking-widest cursor-pointer hover:bg-black transition-colors">
@@ -235,9 +238,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               </div>
               <div className="space-y-2 max-h-64 overflow-auto">
                 {formData.carModels.map((m, i) => (
-                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-transparent hover:border-slate-200">
                     <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button type="button" onClick={() => removeItem('carModels', i)} className="text-red-400">✕</button>
+                    <button type="button" onClick={() => removeItem('carModels', i)} className="text-red-400 hover:text-red-600 transition-colors">✕</button>
                   </div>
                 ))}
               </div>
@@ -250,9 +253,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               </div>
               <div className="space-y-2 max-h-64 overflow-auto">
                 {formData.manufacturingShops.map((m, i) => (
-                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                  <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-transparent hover:border-slate-200">
                     <span className="font-bold text-slate-700 text-xs">{m}</span>
-                    <button type="button" onClick={() => removeItem('manufacturingShops', i)} className="text-red-400">✕</button>
+                    <button type="button" onClick={() => removeItem('manufacturingShops', i)} className="text-red-400 hover:text-red-600 transition-colors">✕</button>
                   </div>
                 ))}
               </div>
@@ -262,48 +265,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
         {activeTab === 'COLUMNS' && (
           <div className="space-y-10">
-            <div id="schema-form" className="bg-slate-900 p-8 rounded-[32px] text-white flex flex-col md:flex-row md:items-end gap-6 border border-white/10 shadow-2xl">
+            <div id="schema-form" className="bg-slate-900 p-8 rounded-[32px] text-white flex flex-col md:flex-row md:items-end gap-6 border border-white/10 shadow-2xl transition-all duration-500">
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Display Label</label>
                 <input className="w-full px-5 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm outline-none focus:ring-2 ring-blue-500 transition-all" placeholder="e.g. Serial" value={newColLabel} onChange={e => setNewColLabel(e.target.value)} />
               </div>
               <div className="flex-1">
-                <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Field ID</label>
+                <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Field ID (Unique)</label>
                 <input className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20 outline-none focus:ring-2 ring-blue-500 transition-all" placeholder="serial_id" value={newColKey} onChange={e => setNewColKey(e.target.value)} />
               </div>
-              <div className="w-full md:w-40">
-                <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Type</label>
-                <select className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm appearance-none text-white outline-none focus:ring-2 ring-blue-500 transition-all" value={newColType} onChange={e => setNewColType(e.target.value as any)}>
-                  <option value="text" className="text-slate-900">Text (String)</option>
-                  <option value="number" className="text-slate-900">Number (Int)</option>
-                  <option value="image" className="text-slate-900">Image (File)</option>
-                </select>
+              <div className="w-full md:w-48">
+                <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Format</label>
+                <div className="relative">
+                  <select className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm appearance-none text-white outline-none focus:ring-2 ring-blue-500 transition-all cursor-pointer" value={newColType} onChange={e => setNewColType(e.target.value as any)}>
+                    <option value="text" className="text-slate-900">Text (String)</option>
+                    <option value="number" className="text-slate-900">Number (Int)</option>
+                    <option value="image" className="text-slate-900">Image (File)</option>
+                  </select>
+                </div>
               </div>
               <div className="flex flex-col gap-2">
-                 <button type="button" onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all">
-                   {editingColId ? 'APPLY UPDATE' : 'REGISTER FIELD'}
-                 </button>
-                 {editingColId && (
-                   <button type="button" onClick={() => { setEditingColId(null); setNewColLabel(''); setNewColKey(''); }} className="text-[10px] font-black text-slate-400 hover:text-white uppercase tracking-widest text-center">
-                     Cancel Edit
-                   </button>
-                 )}
+                 <button type="button" onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all whitespace-nowrap">{editingColId ? 'APPLY UPDATE' : 'REGISTER FIELD'}</button>
+                 {editingColId && <button type="button" onClick={() => { setEditingColId(null); setNewColLabel(''); setNewColKey(''); }} className="text-[10px] font-black text-slate-400 hover:text-white uppercase tracking-widest text-center">Cancel Edit</button>}
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {formData.columns.map(col => (
-                <div key={col.id} className="p-6 rounded-[24px] border border-slate-100 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
+                <div key={col.id} className="p-6 rounded-[24px] border border-slate-100 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow group">
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded">{col.type}</span>
-                      {col.isCore && <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">CORE</span>}
+                      {col.isCore && <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">SYSTEM CORE</span>}
                     </div>
                     <h5 className="text-sm font-black text-slate-900">{col.label}</h5>
                     <p className="text-[9px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
                   <div className="mt-6 flex gap-2">
-                    <button type="button" onClick={() => startEditColumn(col)} className="flex-1 py-2 bg-slate-100 text-slate-900 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors">Edit</button>
+                    <button type="button" onClick={() => startEditColumn(col)} className="flex-1 py-2 bg-slate-100 text-slate-900 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"><ICONS.Signature />Edit</button>
                     <button type="button" onClick={() => removeColumn(col.id)} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Delete</button>
                   </div>
                 </div>
@@ -314,24 +312,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
         {activeTab === 'WORDING' && (
           <div className="space-y-8 max-w-4xl">
+             <div className="bg-amber-50 border border-amber-100 p-6 rounded-3xl mb-4">
+               <p className="text-xs font-bold text-amber-700 flex items-center gap-2">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                 Quick Tip: You can also edit many titles directly on the pages by clicking the pencil icon next to them!
+               </p>
+             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {[
-                { k: 'dashboardHeadline', l: 'Dashboard Title' },
-                { k: 'dashboardSubline', l: 'Dashboard Subtitle' },
-                { k: 'inventoryHeadline', l: 'Inventory Title' },
-                { k: 'inventorySubline', l: 'Inventory Subtitle' },
-                { k: 'transfersHeadline', l: 'Transfers Title' },
-                { k: 'transfersSubline', l: 'Transfers Subtitle' },
-                { k: 'suppliersHeadline', l: 'Vendors Title' },
-                { k: 'suppliersSubline', l: 'Vendors Subtitle' }
-              ].map(item => (
-                <div key={item.k}>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">{item.l}</label>
-                  <input 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-blue-500" 
-                    value={(formData.labels as any)[item.k] || ''} 
-                    onChange={e => setFormData({ ...formData, labels: { ...formData.labels, [item.k]: e.target.value } })} 
-                  />
+              {Object.entries(formData.labels).map(([k, v]) => (
+                <div key={k}>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">{k}</label>
+                  <input className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-blue-500" value={v || ''} onChange={e => setFormData({ ...formData, labels: { ...formData.labels, [k]: e.target.value } })} />
                 </div>
               ))}
             </div>
@@ -350,9 +341,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <button onClick={forcePush} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs shadow-xl">MANUAL CLOUD PUSH</button>
             </div>
             <div className="bg-slate-50 rounded-[32px] p-8 border border-slate-200 flex flex-col h-[500px] overflow-auto">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4">Cloud Log</h4>
+              <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4">Cloud Operation Log</h4>
               {storageService.getSessionLogs().map((log, i) => (
-                <div key={i} className="p-3 bg-white border border-slate-100 rounded-xl mb-2 text-[10px] font-bold">{log.message}</div>
+                <div key={i} className="p-3 bg-white border border-slate-100 rounded-xl mb-2 text-[10px] font-bold flex gap-3"><span className="text-slate-300">[{new Date(log.timestamp).toLocaleTimeString()}]</span><span className={log.status === 'ERROR' ? 'text-red-500' : 'text-blue-500'}>{log.message}</span></div>
               ))}
             </div>
           </div>

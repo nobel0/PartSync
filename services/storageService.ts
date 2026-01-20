@@ -33,7 +33,6 @@ const isValid = (val: any) => val && typeof val === 'string' && val !== 'undefin
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
-    // 1. Try Build-time Env Vars
     const envUrl = process.env.UPSTASH_REDIS_REST_URL;
     const envToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     
@@ -44,7 +43,6 @@ export const storageService = {
       };
     }
 
-    // 2. Fallback to Local Storage for manual overrides
     const stored = localStorage.getItem(DB_CRED_KEY);
     if (stored) {
       try {
@@ -66,7 +64,7 @@ export const storageService = {
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
-    hasPerformedInitialPull = false; // Reset handshake on config change
+    hasPerformedInitialPull = false;
     storageService.notifySync();
   },
 
@@ -125,13 +123,11 @@ export const storageService = {
       if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
       
       const data = await response.json();
-      hasPerformedInitialPull = true; // Handshake established
+      hasPerformedInitialPull = true;
       
       if (!data.result) {
-        // Cloud is empty, seed from local IF local has data
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
-          console.log("[Storage] Cloud registry empty. Seeding from local state...");
           const pushed = await storageService.pushToCloud();
           return { success: pushed, mode: 'CLOUD' };
         }
@@ -162,10 +158,8 @@ export const storageService = {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
 
-    // Safety: No pushing empty state if we haven't successfully pulled/handshaked yet.
     if (!hasPerformedInitialPull) {
-      console.warn("[Storage] Blocked push: Waiting for cloud handshake...");
-      const syncResult = await storageService.syncWithCloud();
+      await storageService.syncWithCloud();
       if (!hasPerformedInitialPull) return false;
     }
 
@@ -204,21 +198,15 @@ export const storageService = {
   },
 
   getParts: (): Part[] => {
-    try {
-      return JSON.parse(localStorage.getItem(PARTS_KEY) || '[]');
-    } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'); } catch (e) { return []; }
   },
   
   getTransfers: (): Transfer[] => {
-    try {
-      return JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]');
-    } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem(TRANSFERS_KEY) || '[]'); } catch (e) { return []; }
   },
 
   getSuppliers: (): Supplier[] => {
-    try {
-      return JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]');
-    } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'); } catch (e) { return []; }
   },
 
   getConfig: (): AppConfig => {
@@ -246,6 +234,8 @@ export const storageService = {
         inventory: "Asset Registry", 
         dashboard: "Command Center", 
         suppliers: "Vendor Network",
+        transfers: "Logistics",
+        alerts: "Security Alerts",
         dashboardHeadline: "Inventory Equilibrium",
         dashboardSubline: "Levels vs Target Thresholds",
         inventoryHeadline: "Master Registry",
@@ -262,8 +252,7 @@ export const storageService = {
     if (!stored) return defaultConf;
     try { 
       const parsed = JSON.parse(stored);
-      // Ensure headlines exist in loaded config
-      if (!parsed.labels.dashboardHeadline) {
+      if (!parsed.labels.transfers) {
         parsed.labels = { ...defaultConf.labels, ...parsed.labels };
       }
       return parsed;
@@ -372,29 +361,13 @@ export const storageService = {
   },
 
   getNotifications: (): Notification[] => {
-    try {
-      return JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]');
-    } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]'); } catch (e) { return []; }
   },
   
   markAsRead: (id: string) => {
     const notifications = storageService.getNotifications();
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.map(n => n.id === id ? { ...n, read: true } : n)));
     storageService.notifySync();
-  },
-
-  migratePartKey: (oldKey: string, newKey: string) => {
-    const parts = storageService.getParts();
-    const updated = parts.map(p => {
-      const pObj = p as Record<string, any>;
-      const val = pObj[oldKey];
-      const newPart: any = { ...p, [newKey]: val, updatedAt: Date.now() };
-      delete newPart[oldKey];
-      return newPart as Part;
-    });
-    localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
-    storageService.notifySync();
-    storageService.pushToCloud();
   },
 
   clearColumnData: (key: string) => {
@@ -407,50 +380,5 @@ export const storageService = {
     localStorage.setItem(PARTS_KEY, JSON.stringify(updated));
     storageService.notifySync();
     storageService.pushToCloud();
-  },
-
-  wipeAllInventory: async () => {
-    localStorage.setItem(PARTS_KEY, JSON.stringify([]));
-    localStorage.setItem(TRANSFERS_KEY, JSON.stringify([]));
-    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify([]));
-    storageService.notifySync();
-    await storageService.pushToCloud();
-  },
-
-  importCSV: async (csvText: string) => {
-    const config = storageService.getConfig();
-    const lines = csvText.split(/\r?\n/);
-    if (lines.length < 2) return;
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-    const parts = storageService.getParts();
-    for (let i = 1; i < lines.length; i++) {
-      if (!lines[i].trim()) continue;
-      const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-      const part: any = { id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, history: [], updatedAt: Date.now(), currentLocation: 'SUPPLIER', currentStock: 0, targetStock: 0 };
-      headers.forEach((header, idx) => {
-        const col = config.columns.find(c => c.label === header || c.id === header);
-        if (col) part[col.id] = col.type === 'number' ? parseInt(values[idx]) || 0 : values[idx];
-      });
-      parts.push(part as Part);
-    }
-    localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
-    storageService.notifySync();
-    await storageService.pushToCloud();
-  },
-
-  exportCSV: () => {
-    const config = storageService.getConfig();
-    const parts = storageService.getParts();
-    let csv = config.columns.map(c => c.label).join(',') + "\n";
-    parts.forEach(p => { 
-      const pObj = p as Record<string, any>;
-      csv += config.columns.map(c => `"${String(pObj[c.id] || '').replace(/"/g, '""')}"`).join(',') + "\n"; 
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Export_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
   }
 };
