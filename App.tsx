@@ -12,6 +12,54 @@ import AuthGate from './components/AuthGate';
 import Transfers from './components/Transfers';
 import SuppliersView from './components/SuppliersView';
 
+// Reusable Editable Component
+const EditableLabel: React.FC<{
+  text: string;
+  onSave: (newText: string) => void;
+  className?: string;
+  adminOnly?: boolean;
+  currentUser?: User | null;
+}> = ({ text, onSave, className, adminOnly, currentUser }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [value, setValue] = useState(text);
+
+  if (adminOnly && currentUser?.role !== 'ADMIN') {
+    return <span className={className}>{text}</span>;
+  }
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-2 group">
+        <input
+          autoFocus
+          className={`bg-white border border-blue-500 rounded px-2 outline-none ${className}`}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => {
+            setIsEditing(false);
+            if (value !== text) onSave(value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              setIsEditing(false);
+              if (value !== text) onSave(value);
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditing(true)}>
+      <span className={className}>{text}</span>
+      <span className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+      </span>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(storageService.getCurrentUser());
   const [view, setView] = useState<ViewType>('DASHBOARD');
@@ -66,6 +114,18 @@ const App: React.FC = () => {
     };
   }, [loadData, triggerCloudSync]);
 
+  const updateLabel = async (key: string, val: string) => {
+    const newConfig = { ...config, labels: { ...config.labels, [key]: val } };
+    setConfig(newConfig);
+    await storageService.saveConfig(newConfig);
+  };
+
+  const updateAppName = async (val: string) => {
+    const newConfig = { ...config, appName: val };
+    setConfig(newConfig);
+    await storageService.saveConfig(newConfig);
+  };
+
   if (isInitializing) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white p-10 text-center">
@@ -115,7 +175,13 @@ const App: React.FC = () => {
             )}
           </div>
           <div className="min-w-0">
-            <h1 className="text-lg font-black text-slate-900 leading-tight truncate">{config.appName}</h1>
+            <EditableLabel 
+              text={config.appName} 
+              onSave={updateAppName} 
+              currentUser={user}
+              adminOnly
+              className="text-lg font-black text-slate-900 leading-tight truncate block" 
+            />
             <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{user.username}</p>
           </div>
         </div>
@@ -160,13 +226,25 @@ const App: React.FC = () => {
         </header>
 
         <section className="flex-1 overflow-y-auto p-4 lg:p-10 bg-[#F8FAFC] pb-24 lg:pb-10">
-          {view === 'DASHBOARD' && <Dashboard config={config} parts={parts} notifications={notifications} onViewInventory={() => setView('INVENTORY')} />}
+          {view === 'DASHBOARD' && <Dashboard config={config} parts={parts} notifications={notifications} onViewInventory={() => setView('INVENTORY')} onUpdateLabel={updateLabel} currentUser={user} />}
           {view === 'INVENTORY' && (
             <div className="space-y-4">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 uppercase">{config.labels.inventoryHeadline}</h3>
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{config.labels.inventorySubline}</p>
+                  <EditableLabel 
+                    text={config.labels.inventoryHeadline || ''} 
+                    onSave={(v) => updateLabel('inventoryHeadline', v)}
+                    className="text-xl font-black text-slate-900 uppercase"
+                    currentUser={user}
+                    adminOnly
+                  />
+                  <EditableLabel 
+                    text={config.labels.inventorySubline || ''} 
+                    onSave={(v) => updateLabel('inventorySubline', v)}
+                    className="text-[10px] text-slate-400 font-black uppercase tracking-widest"
+                    currentUser={user}
+                    adminOnly
+                  />
                 </div>
                 <div className="flex bg-white p-1 rounded-xl border border-slate-200 w-fit h-fit">
                     <button onClick={() => setDisplayMode('GRID')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'GRID' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>GRID VIEW</button>
@@ -176,8 +254,8 @@ const App: React.FC = () => {
               {displayMode === 'GRID' ? <Inventory user={user} parts={parts} config={config} onReceive={(id, qty) => handleUpdateStock(id, qty, 'RECEIVE')} onEdit={setEditingPart} /> : <InventorySheet user={user} parts={parts} config={config} onEdit={setEditingPart} onReceive={(id, qty) => handleUpdateStock(id, qty, 'RECEIVE')} onDataRefresh={loadData} />}
             </div>
           )}
-          {view === 'TRANSFERS' && <Transfers config={config} user={user} parts={parts} onTransferComplete={loadData} />}
-          {view === 'SUPPLIERS' && <SuppliersView config={config} parts={parts} />}
+          {view === 'TRANSFERS' && <Transfers config={config} user={user} parts={parts} onTransferComplete={loadData} onUpdateLabel={updateLabel} />}
+          {view === 'SUPPLIERS' && <SuppliersView config={config} parts={parts} onUpdateLabel={updateLabel} currentUser={user} />}
           {view === 'ALERTS' && <Alerts notifications={notifications} onMarkRead={(id) => { storageService.markAsRead(id); loadData(); }} />}
           {view === 'ADMIN' && <AdminPanel config={config} onSaveConfig={async (c) => { 
             setCloudStatus('SYNCING');

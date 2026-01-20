@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Transfer, User, Part, PartLocation, AppConfig } from '../types';
 import { storageService } from '../services/storageService';
@@ -8,9 +9,44 @@ interface TransfersProps {
   parts: Part[];
   config: AppConfig;
   onTransferComplete: () => void;
+  // Fix: Added missing onUpdateLabel prop to satisfy App.tsx usage
+  onUpdateLabel?: (key: string, val: string) => void;
 }
 
-const Transfers: React.FC<TransfersProps> = ({ user, parts, config, onTransferComplete }) => {
+// Internal EditableLabel component for consistent header editing
+const EditableLabel: React.FC<{
+  text: string;
+  onSave: (newText: string) => void;
+  className?: string;
+  adminOnly?: boolean;
+  currentUser?: User | null;
+}> = ({ text, onSave, className, adminOnly, currentUser }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [value, setValue] = useState(text);
+  if (adminOnly && currentUser?.role !== 'ADMIN') return <span className={className}>{text}</span>;
+  if (isEditing) {
+    return (
+      <input
+        autoFocus
+        className={`bg-white border border-blue-500 rounded px-2 outline-none ${className}`}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => { setIsEditing(false); onSave(value); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { setIsEditing(false); onSave(value); } }}
+      />
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditing(true)}>
+      <span className={className}>{text}</span>
+      <span className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+      </span>
+    </div>
+  );
+};
+
+const Transfers: React.FC<TransfersProps> = ({ user, parts, config, onTransferComplete, onUpdateLabel }) => {
   const [transfers, setTransfers] = useState<Transfer[]>(storageService.getTransfers());
   const [showDispatch, setShowDispatch] = useState(false);
   
@@ -46,8 +82,21 @@ const Transfers: React.FC<TransfersProps> = ({ user, parts, config, onTransferCo
     <div className="max-w-5xl mx-auto space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-2xl font-black text-slate-900 uppercase">{config.labels.transfersHeadline}</h3>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">{config.labels.transfersSubline}</p>
+          {/* Fix: Wrapped headers in EditableLabel for consistency and error resolution */}
+          <EditableLabel 
+            text={config.labels.transfersHeadline || ''} 
+            onSave={(v) => onUpdateLabel?.('transfersHeadline', v)}
+            className="text-2xl font-black text-slate-900 uppercase"
+            currentUser={user}
+            adminOnly
+          />
+          <EditableLabel 
+            text={config.labels.transfersSubline || ''} 
+            onSave={(v) => onUpdateLabel?.('transfersSubline', v)}
+            className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1"
+            currentUser={user}
+            adminOnly
+          />
         </div>
         {user.role === 'SUPPLIER' && (
           <button onClick={() => setShowDispatch(true)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-bold shadow-xl">Initiate Dispatch</button>

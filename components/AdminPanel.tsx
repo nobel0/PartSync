@@ -111,6 +111,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setFormData(prev => ({ ...prev, [type]: updated }));
   };
 
+  const startEditColumn = (col: ColumnDefinition) => {
+    setEditingColId(col.id);
+    setNewColLabel(col.label);
+    setNewColKey(col.id);
+    setNewColType(col.type);
+    setIsPrimary(!!col.isPrimary);
+    // Scroll to form
+    const formElement = document.getElementById('schema-form');
+    if (formElement) formElement.scrollIntoView({ behavior: 'smooth' });
+  };
+
   const addOrUpdateColumn = () => {
     if (!newColLabel.trim() || !newColKey.trim()) return;
     const finalKey = newColKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
@@ -134,6 +145,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       updatedColumns.push(newCol);
       setFormData({ ...formData, columns: updatedColumns });
     }
+    // Reset form
     setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimary(false);
   };
 
@@ -250,35 +262,49 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
         {activeTab === 'COLUMNS' && (
           <div className="space-y-10">
-            <div className="bg-slate-900 p-8 rounded-[32px] text-white flex flex-col md:flex-row md:items-end gap-6">
+            <div id="schema-form" className="bg-slate-900 p-8 rounded-[32px] text-white flex flex-col md:flex-row md:items-end gap-6 border border-white/10 shadow-2xl">
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Display Label</label>
-                <input className="w-full px-5 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm" placeholder="e.g. Serial" value={newColLabel} onChange={e => setNewColLabel(e.target.value)} />
+                <input className="w-full px-5 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm outline-none focus:ring-2 ring-blue-500 transition-all" placeholder="e.g. Serial" value={newColLabel} onChange={e => setNewColLabel(e.target.value)} />
               </div>
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Field ID</label>
-                <input className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20" placeholder="serial_id" value={newColKey} onChange={e => setNewColKey(e.target.value)} />
+                <input className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20 outline-none focus:ring-2 ring-blue-500 transition-all" placeholder="serial_id" value={newColKey} onChange={e => setNewColKey(e.target.value)} />
               </div>
               <div className="w-full md:w-40">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Type</label>
-                <select className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm appearance-none text-white" value={newColType} onChange={e => setNewColType(e.target.value as any)}>
+                <select className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm appearance-none text-white outline-none focus:ring-2 ring-blue-500 transition-all" value={newColType} onChange={e => setNewColType(e.target.value as any)}>
                   <option value="text" className="text-slate-900">Text (String)</option>
                   <option value="number" className="text-slate-900">Number (Int)</option>
                   <option value="image" className="text-slate-900">Image (File)</option>
                 </select>
               </div>
-              <button type="button" onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl">COMMIT</button>
+              <div className="flex flex-col gap-2">
+                 <button type="button" onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-all">
+                   {editingColId ? 'APPLY UPDATE' : 'REGISTER FIELD'}
+                 </button>
+                 {editingColId && (
+                   <button type="button" onClick={() => { setEditingColId(null); setNewColLabel(''); setNewColKey(''); }} className="text-[10px] font-black text-slate-400 hover:text-white uppercase tracking-widest text-center">
+                     Cancel Edit
+                   </button>
+                 )}
+              </div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {formData.columns.map(col => (
-                <div key={col.id} className="p-6 rounded-[24px] border border-slate-100 bg-white flex flex-col justify-between shadow-sm">
+                <div key={col.id} className="p-6 rounded-[24px] border border-slate-100 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
                   <div>
-                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{col.type}</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded">{col.type}</span>
+                      {col.isCore && <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">CORE</span>}
+                    </div>
                     <h5 className="text-sm font-black text-slate-900">{col.label}</h5>
                     <p className="text-[9px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
                   <div className="mt-6 flex gap-2">
-                    <button type="button" onClick={() => removeColumn(col.id)} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase">Delete Field</button>
+                    <button type="button" onClick={() => startEditColumn(col)} className="flex-1 py-2 bg-slate-100 text-slate-900 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors">Edit</button>
+                    <button type="button" onClick={() => removeColumn(col.id)} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Delete</button>
                   </div>
                 </div>
               ))}
@@ -302,7 +328,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 <div key={item.k}>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">{item.l}</label>
                   <input 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-blue-500" 
                     value={(formData.labels as any)[item.k] || ''} 
                     onChange={e => setFormData({ ...formData, labels: { ...formData.labels, [item.k]: e.target.value } })} 
                   />
