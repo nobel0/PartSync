@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Part, AppConfig, User } from '../types';
 import { ICONS, LOW_STOCK_THRESHOLD } from '../constants';
@@ -51,8 +50,14 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                       <td key={col.id} className="px-4 lg:px-6 py-3 lg:py-4">
                         {col.id === 'name' ? (
                           <div className="flex items-center gap-2 lg:gap-3">
-                            <img src={part.imageUrl} className={`w-8 h-8 lg:w-10 lg:h-10 rounded-lg object-cover bg-slate-100 ${!hasPermission ? 'grayscale' : ''}`} alt="" />
+                            <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
+                               <img src={part.imageUrl} className={`w-full h-full object-cover ${!hasPermission ? 'grayscale' : ''}`} alt="" />
+                            </div>
                             <span className={`font-bold text-xs lg:text-sm line-clamp-1 ${hasPermission ? 'text-slate-800' : 'text-slate-400'}`}>{val}</span>
+                          </div>
+                        ) : col.type === 'image' ? (
+                          <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm">
+                             {val ? <img src={val} className="w-full h-full object-cover" alt="Preview" /> : <div className="w-full h-full flex items-center justify-center text-[7px] font-black text-slate-300 uppercase">Void</div>}
                           </div>
                         ) : col.id === 'currentStock' ? (
                           <div className="flex items-center gap-2">

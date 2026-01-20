@@ -20,7 +20,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   const [editingColId, setEditingColId] = useState<string | null>(null);
   const [newColLabel, setNewColLabel] = useState('');
   const [newColKey, setNewColKey] = useState('');
-  const [newColType, setNewColType] = useState<'text' | 'number'>('text');
+  const [newColType, setNewColType] = useState<'text' | 'number' | 'image'>('text');
   const [isPrimary, setIsPrimary] = useState(false);
 
   useEffect(() => {
@@ -33,11 +33,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     alert("✅ System Configuration Updated Successfully");
   };
 
-  const checkCloudHealth = async () => {
-    setIsSyncing(true);
-    const result = await storageService.testConnection();
-    setHealthStatus({ checked: true, ...result });
-    setIsSyncing(false);
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, logoUrl: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const forcePull = async () => {
@@ -119,11 +123,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       if (!oldCol) return;
 
       if (finalKey !== editingColId) {
-        const warningMessage = oldCol.isCore 
-          ? `WARNING: You are changing a CORE SYSTEM KEY ("${editingColId}" -> "${finalKey}"). This will migrate all data to the new key. Proceed?`
-          : `Renaming Key "${editingColId}" to "${finalKey}" will migrate all existing inventory data. Proceed?`;
-          
-        if (window.confirm(warningMessage)) {
+        if (window.confirm(`Migrate all inventory data from "${editingColId}" to "${finalKey}"?`)) {
           storageService.migratePartKey(editingColId, finalKey);
         } else return;
       }
@@ -134,9 +134,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
           ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary: !!isPrimary } 
           : { ...col };
         
-        if (isPrimary && updatedCol.id !== finalKey) {
-          updatedCol.isPrimary = false;
-        }
+        if (isPrimary && updatedCol.id !== finalKey) updatedCol.isPrimary = false;
         return updatedCol;
       });
       
@@ -163,10 +161,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   const removeColumn = (id: string) => {
     const col = formData.columns.find(c => c.id === id);
-    if (col?.isCore) {
-      if (!window.confirm("CRITICAL: This is a CORE SYSTEM field. Deleting it might break built-in logic. Are you absolutely sure?")) return;
-    }
-    if (window.confirm("Permanently delete this column? Data associated with this field in existing parts will be purged.")) {
+    if (col?.isCore && !window.confirm("CRITICAL: Delete core system field?")) return;
+    if (window.confirm("Permanently delete this column and its associated data?")) {
       setFormData({ ...formData, columns: formData.columns.filter(c => c.id !== id) });
       storageService.clearColumnData(id);
       onDataRefresh();
@@ -218,38 +214,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                       <span className="font-mono text-sm text-slate-500 font-bold">{formData.primaryColor}</span>
                     </div>
                   </div>
-                  <div className="pt-4 border-t border-slate-100">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Navigation Labels</label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <input className="px-4 py-2 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Dashboard Label" value={formData.labels.dashboard} onChange={e => setFormData({ ...formData, labels: { ...formData.labels, dashboard: e.target.value } })} />
-                      <input className="px-4 py-2 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Inventory Label" value={formData.labels.inventory} onChange={e => setFormData({ ...formData, labels: { ...formData.labels, inventory: e.target.value } })} />
-                    </div>
-                  </div>
                 </div>
 
                 <div className="space-y-6">
                   <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Logo / Favicon</h4>
                     <div className="flex items-center gap-6">
-                       <div className="w-20 h-20 bg-white rounded-2xl border flex items-center justify-center overflow-hidden shadow-sm">
+                       <div className="w-24 h-24 bg-white rounded-3xl border flex items-center justify-center overflow-hidden shadow-sm relative">
                           {formData.logoUrl ? <img src={formData.logoUrl} className="max-w-[80%] max-h-[80%] object-contain" alt="Preview" /> : <div className="text-[10px] font-black text-slate-300">NO LOGO</div>}
                        </div>
-                       <div className="flex-1">
-                          <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Logo Resource URL</label>
-                          <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="https://..." value={formData.logoUrl || ''} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
+                       <div className="flex-1 space-y-3">
+                          <label className="block w-full py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black text-center uppercase tracking-widest cursor-pointer hover:bg-black transition-colors">
+                            Upload from Device
+                            <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                          </label>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Resource URL (Fallback)</label>
+                            <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="https://..." value={formData.logoUrl || ''} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
+                          </div>
                        </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200 space-y-4">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Credentials</h4>
-                    <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Email</label>
-                      <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminEmail} onChange={e => setFormData({ ...formData, adminEmail: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase mb-1">Admin Passkey</label>
-                      <input type="password" placeholder="••••••••" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs" value={formData.adminPassword} onChange={e => setFormData({ ...formData, adminPassword: e.target.value })} />
                     </div>
                   </div>
                 </div>
@@ -302,18 +285,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               </div>
               <div className="flex-1">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Key (ID)</label>
-                <input 
-                  className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20"
-                  placeholder="serial_number" 
-                  value={newColKey} 
-                  onChange={e => setNewColKey(e.target.value)} 
-                />
+                <input className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20" placeholder="serial_number" value={newColKey} onChange={e => setNewColKey(e.target.value)} />
               </div>
-              <div className="w-full md:w-32">
+              <div className="w-full md:w-40">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Data Type</label>
                 <select className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm appearance-none" value={newColType} onChange={e => setNewColType(e.target.value as any)}>
-                  <option value="text">Text</option>
-                  <option value="number">Number</option>
+                  <option value="text">Text (String)</option>
+                  <option value="number">Number (Integer)</option>
+                  <option value="image">Image (Photo)</option>
                 </select>
               </div>
               <div className="flex items-center gap-2 mb-2">
@@ -373,7 +352,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     RECOVER FROM CLOUD
                   </button>
                 </div>
-                <button type="button" onClick={forcePush} className="w-full py-4 bg-slate-100 text-slate-400 text-[10px] font-black uppercase rounded-2xl border border-slate-200 hover:text-red-600 hover:border-red-200 transition-colors">Emergency Cloud Override (Push Local)</button>
               </div>
             </div>
 
@@ -423,14 +401,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   }} />
                 </label>
               </div>
-            </div>
-
-            <div className="p-10 bg-red-50 rounded-[40px] border border-red-100 flex items-center justify-between">
-              <div className="max-w-md">
-                <h4 className="text-lg font-black text-red-900 uppercase">Emergency Registry Purge</h4>
-                <p className="text-red-700 text-xs font-medium mt-1">This operation wipes all parts, history, and notifications. This is irreversible unless you have a CSV backup.</p>
-              </div>
-              <button type="button" onClick={() => { if(window.confirm("PURGE ALL DATA? Type 'DELETE' to confirm.")) { storageService.wipeAllInventory(); onDataRefresh(); } }} className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all">Wipe Global Registry</button>
             </div>
           </div>
         )}

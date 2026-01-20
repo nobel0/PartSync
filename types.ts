@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   username: string;
@@ -18,7 +17,7 @@ export interface Supplier {
 export interface ColumnDefinition {
   id: string;
   label: string;
-  type: 'text' | 'number';
+  type: 'text' | 'number' | 'image';
   isCore?: boolean;
   isPrimary?: boolean;
 }

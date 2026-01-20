@@ -33,7 +33,7 @@ const isValid = (val: any) => val && typeof val === 'string' && val !== 'undefin
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
-    // 1. Try Build-time Env Vars (Highest priority - handles Vercel/Local .env via Vite define)
+    // 1. Try Build-time Env Vars
     const envUrl = process.env.UPSTASH_REDIS_REST_URL;
     const envToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     
@@ -66,7 +66,7 @@ export const storageService = {
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
-    hasPerformedInitialPull = false; // Reset handshake status on config change
+    hasPerformedInitialPull = false; // Reset handshake on config change
     storageService.notifySync();
   },
 
@@ -125,12 +125,13 @@ export const storageService = {
       if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
       
       const data = await response.json();
-      hasPerformedInitialPull = true; // Handshake verified
+      hasPerformedInitialPull = true; // Handshake established
       
       if (!data.result) {
+        // Cloud is empty, seed from local IF local has data
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
-          console.log("[Storage] Cloud empty, initializing master registry...");
+          console.log("[Storage] Cloud registry empty. Seeding from local state...");
           const pushed = await storageService.pushToCloud();
           return { success: pushed, mode: 'CLOUD' };
         }
@@ -141,19 +142,18 @@ export const storageService = {
       const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
       const remoteUpdatedAt = remoteState.lastPushAt || 0;
 
-      if (remoteUpdatedAt > localUpdatedAt || force) {
-        console.log("[Storage] Remote data is newer. Syncing...");
+      if (remoteUpdatedAt >= localUpdatedAt || force) {
         if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
         if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
         if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
         if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
         localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
         storageService.notifySync();
-        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: 'Remote registry merged.' });
+        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: force ? 'Cloud Recovery Merged.' : 'Registry Sync Complete.' });
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
-      sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'ERROR', message: String(e) });
+      sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'ERROR', message: `Sync failed: ${String(e)}` });
       return { success: false, mode: 'LOCAL' };
     }
   },
@@ -162,10 +162,10 @@ export const storageService = {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
 
-    // Safety Gate: Do not push empty state if we haven't successfully pulled/handshaked yet.
+    // Safety: No pushing empty state if we haven't successfully pulled/handshaked yet.
     if (!hasPerformedInitialPull) {
-      console.warn("[Storage] Cloud push blocked: Handshake incomplete. Pulling first.");
-      await storageService.syncWithCloud();
+      console.warn("[Storage] Blocked push: Waiting for cloud handshake...");
+      const syncResult = await storageService.syncWithCloud();
       if (!hasPerformedInitialPull) return false;
     }
 
@@ -194,11 +194,11 @@ export const storageService = {
         sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud.' });
         return true;
       } else {
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Rejected: ${response.status}` });
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Commit rejected: ${response.status}` });
         return false;
       }
     } catch (e) {
-      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Mesh connection lost.' });
+      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Mesh connection severed.' });
       return false;
     }
   },
