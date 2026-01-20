@@ -103,6 +103,14 @@ export interface AppConfig {
     inventory: string;
     dashboard: string;
     suppliers: string;
+    dashboardHeadline?: string;
+    dashboardSubline?: string;
+    inventoryHeadline?: string;
+    inventorySubline?: string;
+    transfersHeadline?: string;
+    transfersSubline?: string;
+    suppliersHeadline?: string;
+    suppliersSubline?: string;
   };
   adminEmail?: string;
   adminPassword?: string;

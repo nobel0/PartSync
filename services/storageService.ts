@@ -66,7 +66,7 @@ export const storageService = {
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
-    hasPerformedInitialPull = false; // Reset handshake on config change
+    hasPerformedInitialPull = false; 
     storageService.notifySync();
   },
 
@@ -125,13 +125,11 @@ export const storageService = {
       if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
       
       const data = await response.json();
-      hasPerformedInitialPull = true; // Handshake established
+      hasPerformedInitialPull = true; 
       
       if (!data.result) {
-        // Cloud is empty, seed from local IF local has data
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
-          console.log("[Storage] Cloud registry empty. Seeding from local state...");
           const pushed = await storageService.pushToCloud();
           return { success: pushed, mode: 'CLOUD' };
         }
@@ -162,9 +160,7 @@ export const storageService = {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
 
-    // Safety: No pushing empty state if we haven't successfully pulled/handshaked yet.
     if (!hasPerformedInitialPull) {
-      console.warn("[Storage] Blocked push: Waiting for cloud handshake...");
       const syncResult = await storageService.syncWithCloud();
       if (!hasPerformedInitialPull) return false;
     }
@@ -242,7 +238,19 @@ export const storageService = {
         { id: 'targetStock', label: 'Target', type: 'number', isCore: true },
         { id: 'supplierName', label: 'Supplier', type: 'text', isCore: true },
       ],
-      labels: { inventory: "Asset Registry", dashboard: "Command Center", suppliers: "Vendor Network" },
+      labels: { 
+        inventory: "Asset Registry", 
+        dashboard: "Command Center", 
+        suppliers: "Vendor Network",
+        dashboardHeadline: "Inventory Equilibrium",
+        dashboardSubline: "Levels vs Target Thresholds",
+        inventoryHeadline: "Master Registry",
+        inventorySubline: "Global Asset Inventory",
+        transfersHeadline: "Transfer Handshake System",
+        transfersSubline: "Multi-Party Digital Validation",
+        suppliersHeadline: "Vendor Management",
+        suppliersSubline: "Supplier Performance Registry"
+      },
       adminEmail: "abdalhady.joharji@gmail.com",
       adminPassword: "admin",
       updatedAt: Date.now()
