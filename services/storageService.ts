@@ -26,30 +26,25 @@ interface CloudLog {
 
 const syncChannel = new BroadcastChannel('partflow_mesh_sync');
 let sessionLogs: CloudLog[] = [];
+let hasPerformedInitialPull = false;
 
-// Improved check for various environment variable formats
-const getEnv = (key: string): string | undefined => {
-  return (process.env[key] as string) || 
-         (import.meta as any).env?.[`VITE_${key}`] || 
-         (import.meta as any).env?.[key];
-};
-
-const isValidEnv = (val: any) => val && typeof val === 'string' && val !== 'undefined' && val !== 'null' && val.trim().length > 5;
+// Helper for valid strings
+const isValid = (val: any) => val && typeof val === 'string' && val !== 'undefined' && val !== 'null' && val.trim().length > 5;
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
-    // 1. Try System Env Vars (highest priority)
-    const envUrl = getEnv('UPSTASH_REDIS_REST_URL');
-    const envToken = getEnv('UPSTASH_REDIS_REST_TOKEN');
+    // 1. Try Build-time Env Vars (Highest priority - handles Vercel/Local .env via Vite define)
+    const envUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const envToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     
-    if (isValidEnv(envUrl) && isValidEnv(envToken)) {
+    if (isValid(envUrl) && isValid(envToken)) {
       return { 
         url: envUrl!.trim().replace(/\/$/, ''), 
         token: envToken!.trim() 
       };
     }
 
-    // 2. Fallback to Local Storage
+    // 2. Fallback to Local Storage for manual overrides
     const stored = localStorage.getItem(DB_CRED_KEY);
     if (stored) {
       try {
@@ -71,6 +66,7 @@ export const storageService = {
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
+    hasPerformedInitialPull = false; // Reset handshake status on config change
     storageService.notifySync();
   },
 
@@ -117,12 +113,11 @@ export const storageService = {
 
   getSessionLogs: () => sessionLogs,
 
-  syncWithCloud: async (): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
+  syncWithCloud: async (force: boolean = false): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
     const creds = storageService.getDBCredentials();
     if (!creds) return { success: true, mode: 'LOCAL' };
 
     try {
-      console.log("[Storage] Attempting Cloud Pull...");
       const response = await fetch(`${creds.url}/get/${MASTER_DB_KEY}`, {
         headers: { Authorization: `Bearer ${creds.token}` }
       });
@@ -130,20 +125,24 @@ export const storageService = {
       if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
       
       const data = await response.json();
+      hasPerformedInitialPull = true; // Handshake verified
       
-      // Handle the case where the cloud is completely empty
       if (!data.result) {
-        console.log("[Storage] Cloud is empty. Initializing Seed Push...");
-        const pushed = await storageService.pushToCloud();
-        return { success: pushed, mode: 'CLOUD' };
+        const localParts = storageService.getParts();
+        if (localParts.length > 0) {
+          console.log("[Storage] Cloud empty, initializing master registry...");
+          const pushed = await storageService.pushToCloud();
+          return { success: pushed, mode: 'CLOUD' };
+        }
+        return { success: true, mode: 'CLOUD' };
       }
 
       const remoteState = JSON.parse(data.result);
       const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
       const remoteUpdatedAt = remoteState.lastPushAt || 0;
 
-      if (remoteUpdatedAt > localUpdatedAt) {
-        console.log("[Storage] Cloud is newer. Updating local state.");
+      if (remoteUpdatedAt > localUpdatedAt || force) {
+        console.log("[Storage] Remote data is newer. Syncing...");
         if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
         if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
         if (remoteState.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(remoteState.suppliers));
@@ -151,12 +150,9 @@ export const storageService = {
         localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
         storageService.notifySync();
         sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: 'Remote registry merged.' });
-      } else {
-        console.log("[Storage] Local state is up to date.");
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
-      console.error("[Storage] Sync Error:", e);
       sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'ERROR', message: String(e) });
       return { success: false, mode: 'LOCAL' };
     }
@@ -166,8 +162,14 @@ export const storageService = {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
 
+    // Safety Gate: Do not push empty state if we haven't successfully pulled/handshaked yet.
+    if (!hasPerformedInitialPull) {
+      console.warn("[Storage] Cloud push blocked: Handshake incomplete. Pulling first.");
+      await storageService.syncWithCloud();
+      if (!hasPerformedInitialPull) return false;
+    }
+
     try {
-      console.log("[Storage] Initiating Cloud Push...");
       const timestamp = Date.now();
       const payload = {
         parts: storageService.getParts(),
@@ -190,15 +192,12 @@ export const storageService = {
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
         sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud.' });
-        console.log("[Storage] Push successful.");
         return true;
       } else {
-        const errorText = await response.text();
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Rejected: ${response.status} - ${errorText.substring(0, 20)}` });
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Rejected: ${response.status}` });
         return false;
       }
     } catch (e) {
-      console.error("[Storage] Push Network Error:", e);
       sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Mesh connection lost.' });
       return false;
     }
@@ -235,7 +234,7 @@ export const storageService = {
       requiredFields: ['partNumber', 'name', 'currentStock'],
       columns: [
         { id: 'partNumber', label: 'Reference ID', type: 'text', isCore: true },
-        { id: 'name', label: 'Part Name', type: 'text', isCore: true },
+        { id: 'name', label: 'Part Name', type: 'text', isCore: true, isPrimary: true },
         { id: 'manufacturingShop', label: 'Assigned Shop', type: 'text', isCore: true },
         { id: 'currentLocation', label: 'Current Location', type: 'text', isCore: true },
         { id: 'carModel', label: 'Car Model', type: 'text', isCore: true },
