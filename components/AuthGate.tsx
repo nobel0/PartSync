@@ -62,6 +62,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
     setError("Administrator secure portal activated. Please enter master credentials.");
   };
 
+  // Fix: Removed stray text 'verification failed;' which was causing syntax errors.
   const verifyHuman = () => {
     if (Math.abs(challengeValue - challengeTarget) < 5) {
       onAuthenticated({ 
@@ -85,11 +86,11 @@ const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, config }) => {
       <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden relative border border-white/20">
         <div className="p-10 lg:p-12">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-24 h-24 mb-6 flex items-center justify-center overflow-hidden">
+            <div className="w-24 h-24 mb-6 flex items-center justify-center border border-slate-100 bg-white rounded-2xl overflow-hidden shrink-0">
                {config.logoUrl ? (
                  <img src={config.logoUrl} className="max-w-full max-h-full object-contain" alt="Logo" />
                ) : (
-                 <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-white">
+                 <div className="text-slate-900">
                    <ICONS.Inventory />
                  </div>
                )}

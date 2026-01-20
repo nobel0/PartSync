@@ -66,7 +66,7 @@ export const storageService = {
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
-    hasPerformedInitialPull = false; 
+    hasPerformedInitialPull = false; // Reset handshake on config change
     storageService.notifySync();
   },
 
@@ -125,11 +125,13 @@ export const storageService = {
       if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
       
       const data = await response.json();
-      hasPerformedInitialPull = true; 
+      hasPerformedInitialPull = true; // Handshake established
       
       if (!data.result) {
+        // Cloud is empty, seed from local IF local has data
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
+          console.log("[Storage] Cloud registry empty. Seeding from local state...");
           const pushed = await storageService.pushToCloud();
           return { success: pushed, mode: 'CLOUD' };
         }
@@ -160,7 +162,9 @@ export const storageService = {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
 
+    // Safety: No pushing empty state if we haven't successfully pulled/handshaked yet.
     if (!hasPerformedInitialPull) {
+      console.warn("[Storage] Blocked push: Waiting for cloud handshake...");
       const syncResult = await storageService.syncWithCloud();
       if (!hasPerformedInitialPull) return false;
     }
@@ -256,7 +260,14 @@ export const storageService = {
       updatedAt: Date.now()
     };
     if (!stored) return defaultConf;
-    try { return JSON.parse(stored); } catch (e) { return defaultConf; }
+    try { 
+      const parsed = JSON.parse(stored);
+      // Ensure headlines exist in loaded config
+      if (!parsed.labels.dashboardHeadline) {
+        parsed.labels = { ...defaultConf.labels, ...parsed.labels };
+      }
+      return parsed;
+    } catch (e) { return defaultConf; }
   },
 
   savePart: async (part: Part) => {

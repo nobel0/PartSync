@@ -52,7 +52,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     if (success) {
       alert("✅ Registry recovered from cloud.");
       onDataRefresh();
-    } else alert("❌ Cloud recovery failed.");
+    } else {
+      alert("❌ Cloud recovery failed.");
+    }
     setIsSyncing(false);
   };
 
@@ -60,8 +62,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     if (!window.confirm("CRITICAL: Overwrite remote data with local?")) return;
     setIsSyncing(true);
     const success = await storageService.pushToCloud();
-    if (success) alert("✅ Local state committed to cloud master.");
-    else alert("❌ Push failed. Verify cloud link.");
+    if (success) {
+      alert("✅ Local state committed to cloud master.");
+    } else {
+      alert("❌ Push failed. Verify cloud link.");
+    }
     setIsSyncing(false);
   };
 
@@ -71,15 +76,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       alert("Database link cleared.");
       return;
     }
+    
     setIsSyncing(true);
     storageService.setDBCredentials(dbCreds);
+    
     const { success } = await storageService.syncWithCloud();
     const health = await storageService.testConnection();
     setHealthStatus({ checked: true, ...health });
+    
     if (success && health.success) {
       alert("✅ Cloud mesh established.");
       onDataRefresh();
-    } else alert(`❌ Connection issue: ${health.message}`);
+    } else {
+      alert(`❌ Connection issue: ${health.message}`);
+    }
     setIsSyncing(false);
   };
 
@@ -87,7 +97,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     const val = type === 'carModels' ? newModelItem : newShopItem;
     if (!val.trim()) return;
     if (formData[type].includes(val.trim())) return alert("Item exists.");
-    setFormData(prev => ({ ...prev, [type]: [...prev[type], val.trim()] }));
+    
+    setFormData(prev => ({
+      ...prev,
+      [type]: [...prev[type], val.trim()]
+    }));
     if (type === 'carModels') setNewModelItem(''); else setNewShopItem('');
   };
 
@@ -112,10 +126,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       });
       setFormData({ ...formData, columns: updatedColumns });
       setEditingColId(null);
+      onDataRefresh();
     } else {
       if (formData.columns.some(c => c.id === finalKey)) return alert("ID collision.");
       const newCol: ColumnDefinition = { id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary: !!isPrimary };
-      const updatedColumns = isPrimary ? formData.columns.map(c => ({ ...c, isPrimary: false } as ColumnDefinition)).concat(newCol) : [...formData.columns, newCol];
+      let updatedColumns = isPrimary ? formData.columns.map(c => ({ ...c, isPrimary: false } as ColumnDefinition)) : [...formData.columns];
+      updatedColumns.push(newCol);
       setFormData({ ...formData, columns: updatedColumns });
     }
     setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimary(false);
@@ -188,7 +204,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                           Upload from Device
                           <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                         </label>
-                        <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="Logo URL..." value={formData.logoUrl || ''} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
+                        <input className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-mono text-[10px]" placeholder="Direct URL..." value={formData.logoUrl || ''} onChange={e => setFormData({ ...formData, logoUrl: e.target.value })} />
                      </div>
                   </div>
                 </div>
@@ -239,12 +255,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Display Label</label>
                 <input className="w-full px-5 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm" placeholder="e.g. Serial" value={newColLabel} onChange={e => setNewColLabel(e.target.value)} />
               </div>
+              <div className="flex-1">
+                <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Field ID</label>
+                <input className="w-full px-5 py-3 border rounded-xl font-mono text-sm bg-white/10 border-white/20" placeholder="serial_id" value={newColKey} onChange={e => setNewColKey(e.target.value)} />
+              </div>
               <div className="w-full md:w-40">
                 <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Type</label>
                 <select className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl font-bold text-sm appearance-none text-white" value={newColType} onChange={e => setNewColType(e.target.value as any)}>
-                  <option value="text" className="text-slate-900">Text</option>
-                  <option value="number" className="text-slate-900">Number</option>
-                  <option value="image" className="text-slate-900">Image</option>
+                  <option value="text" className="text-slate-900">Text (String)</option>
+                  <option value="number" className="text-slate-900">Number (Int)</option>
+                  <option value="image" className="text-slate-900">Image (File)</option>
                 </select>
               </div>
               <button type="button" onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl">COMMIT</button>
@@ -255,6 +275,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   <div>
                     <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{col.type}</span>
                     <h5 className="text-sm font-black text-slate-900">{col.label}</h5>
+                    <p className="text-[9px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
                   <div className="mt-6 flex gap-2">
                     <button type="button" onClick={() => removeColumn(col.id)} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase">Delete Field</button>
@@ -269,14 +290,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
           <div className="space-y-8 max-w-4xl">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {[
-                { k: 'dashboardHeadline', l: 'Dashboard Headline' },
-                { k: 'dashboardSubline', l: 'Dashboard Subline' },
-                { k: 'inventoryHeadline', l: 'Inventory Headline' },
-                { k: 'inventorySubline', l: 'Inventory Subline' },
-                { k: 'transfersHeadline', l: 'Transfers Headline' },
-                { k: 'transfersSubline', l: 'Transfers Subline' },
-                { k: 'suppliersHeadline', l: 'Suppliers Headline' },
-                { k: 'suppliersSubline', l: 'Suppliers Subline' }
+                { k: 'dashboardHeadline', l: 'Dashboard Title' },
+                { k: 'dashboardSubline', l: 'Dashboard Subtitle' },
+                { k: 'inventoryHeadline', l: 'Inventory Title' },
+                { k: 'inventorySubline', l: 'Inventory Subtitle' },
+                { k: 'transfersHeadline', l: 'Transfers Title' },
+                { k: 'transfersSubline', l: 'Transfers Subtitle' },
+                { k: 'suppliersHeadline', l: 'Vendors Title' },
+                { k: 'suppliersSubline', l: 'Vendors Subtitle' }
               ].map(item => (
                 <div key={item.k}>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">{item.l}</label>
@@ -294,11 +315,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         {activeTab === 'CLOUD' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
-              <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="URL" value={dbCreds.url} onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} />
+              <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Upstash URL" value={dbCreds.url} onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} />
               <input type="password" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Token" value={dbCreds.token} onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} />
               <div className="grid grid-cols-2 gap-4">
-                <button onClick={saveDBCreds} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl">LINK</button>
-                <button onClick={forcePull} className="py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl">RECOVER</button>
+                <button onClick={saveDBCreds} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl">LINK MESH</button>
+                <button onClick={forcePull} className="py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl">RECOVER CLOUD</button>
               </div>
               <button onClick={forcePush} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs shadow-xl">MANUAL CLOUD PUSH</button>
             </div>
