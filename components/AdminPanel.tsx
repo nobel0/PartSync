@@ -37,6 +37,88 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     alert("✅ System Configuration Updated Successfully");
   };
 
+  const handleExport = () => {
+    const backup = {
+      parts: storageService.getParts(),
+      transfers: storageService.getTransfers(),
+      suppliers: storageService.getSuppliers(),
+      config: storageService.getConfig(),
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `partflow_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (window.confirm("CRITICAL: This will overwrite ALL current local data with the imported file. Proceed?")) {
+          if (data.parts) localStorage.setItem('partflow_parts_v10', JSON.stringify(data.parts));
+          if (data.transfers) localStorage.setItem('partflow_transfers_v10', JSON.stringify(data.transfers));
+          if (data.config) localStorage.setItem('partflow_config_v10', JSON.stringify(data.config));
+          
+          alert("✅ Data Manifest Imported. Pushing to cloud mesh...");
+          await storageService.pushToCloud();
+          onDataRefresh();
+          window.location.reload();
+        }
+      } catch (err) {
+        alert("❌ Failed to parse data file. Ensure it is a valid PartFlow JSON backup.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleNuclearReset = async () => {
+    if (window.confirm("NUCLEAR OPTION: This will delete ALL assets and transfers from this device. Are you absolutely sure?")) {
+      if (window.confirm("LAST CHANCE: Data will be lost forever if not synced to cloud. Confirm deletion?")) {
+        localStorage.removeItem('partflow_parts_v10');
+        localStorage.removeItem('partflow_transfers_v10');
+        localStorage.removeItem('partflow_notifications_v10');
+        await storageService.pushToCloud();
+        alert("Facility Registry Wiped.");
+        onDataRefresh();
+        window.location.reload();
+      }
+    }
+  };
+
+  const saveDBCreds = () => {
+    storageService.setDBCredentials(dbCreds);
+    alert("Cloud Mesh Credentials Updated.");
+    onDataRefresh();
+  };
+
+  const forcePull = async () => {
+    setIsSyncing(true);
+    const { success } = await storageService.syncWithCloud(true);
+    setIsSyncing(false);
+    if (success) alert("Cloud Recovery Merged.");
+    else alert("Sync Failed. Check Mesh Credentials.");
+    onDataRefresh();
+  };
+
+  const forcePush = async () => {
+    setIsSyncing(true);
+    const success = await storageService.pushToCloud();
+    setIsSyncing(false);
+    if (success) alert("Registry committed to cloud.");
+    else alert("Push Failed. Check Mesh Credentials.");
+    onDataRefresh();
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -46,54 +128,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const forcePull = async () => {
-    if (!window.confirm("WARNING: Overwrite local session with cloud?")) return;
-    setIsSyncing(true);
-    const { success } = await storageService.syncWithCloud(true);
-    if (success) {
-      alert("✅ Registry recovered from cloud.");
-      onDataRefresh();
-    } else {
-      alert("❌ Cloud recovery failed.");
-    }
-    setIsSyncing(false);
-  };
-
-  const forcePush = async () => {
-    if (!window.confirm("CRITICAL: Overwrite remote data with local?")) return;
-    setIsSyncing(true);
-    const success = await storageService.pushToCloud();
-    if (success) {
-      alert("✅ Local state committed to cloud master.");
-    } else {
-      alert("❌ Push failed. Verify cloud link.");
-    }
-    setIsSyncing(false);
-  };
-
-  const saveDBCreds = async () => {
-    if (!dbCreds.url || !dbCreds.token) {
-      storageService.setDBCredentials(null);
-      alert("Database link cleared.");
-      return;
-    }
-    
-    setIsSyncing(true);
-    storageService.setDBCredentials(dbCreds);
-    
-    const { success } = await storageService.syncWithCloud();
-    const health = await storageService.testConnection();
-    setHealthStatus({ checked: true, ...health });
-    
-    if (success && health.success) {
-      alert("✅ Cloud mesh established.");
-      onDataRefresh();
-    } else {
-      alert(`❌ Connection issue: ${health.message}`);
-    }
-    setIsSyncing(false);
   };
 
   const addItem = (type: 'carModels' | 'manufacturingShops') => {
@@ -301,7 +335,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     <p className="text-[9px] font-mono text-slate-400 mt-1">{col.id}</p>
                   </div>
                   <div className="mt-6 flex gap-2">
-                    <button type="button" onClick={() => startEditColumn(col)} className="flex-1 py-2 bg-slate-100 text-slate-900 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"><ICONS.Signature />Edit</button>
+                    <button type="button" onClick={() => startEditColumn(col)} className="flex-1 py-2 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase hover:bg-slate-900 hover:text-white transition-all flex items-center justify-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                      Edit
+                    </button>
                     <button type="button" onClick={() => removeColumn(col.id)} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Delete</button>
                   </div>
                 </div>
@@ -335,16 +372,70 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Upstash URL" value={dbCreds.url} onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} />
               <input type="password" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Token" value={dbCreds.token} onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} />
               <div className="grid grid-cols-2 gap-4">
-                <button onClick={saveDBCreds} className="py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl">LINK MESH</button>
-                <button onClick={forcePull} className="py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl">RECOVER CLOUD</button>
+                <button disabled={isSyncing} onClick={saveDBCreds} className={`py-5 bg-blue-600 text-white rounded-[24px] font-black text-xs shadow-xl ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {isSyncing ? 'PROCESSING...' : 'LINK MESH'}
+                </button>
+                <button disabled={isSyncing} onClick={forcePull} className={`py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs shadow-xl ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {isSyncing ? 'RECOVERING...' : 'RECOVER CLOUD'}
+                </button>
               </div>
-              <button onClick={forcePush} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs shadow-xl">MANUAL CLOUD PUSH</button>
+              <button disabled={isSyncing} onClick={forcePush} className={`w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs shadow-xl ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                {isSyncing ? 'PUSHING...' : 'MANUAL CLOUD PUSH'}
+              </button>
             </div>
             <div className="bg-slate-50 rounded-[32px] p-8 border border-slate-200 flex flex-col h-[500px] overflow-auto">
               <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4">Cloud Operation Log</h4>
               {storageService.getSessionLogs().map((log, i) => (
                 <div key={i} className="p-3 bg-white border border-slate-100 rounded-xl mb-2 text-[10px] font-bold flex gap-3"><span className="text-slate-300">[{new Date(log.timestamp).toLocaleTimeString()}]</span><span className={log.status === 'ERROR' ? 'text-red-500' : 'text-blue-500'}>{log.message}</span></div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'DATA' && (
+          <div className="space-y-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="bg-slate-50 p-10 rounded-[40px] border border-slate-200 space-y-6">
+                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-slate-900">Export Registry</h4>
+                  <p className="text-sm text-slate-500 mt-2">Download a comprehensive JSON backup of all assets, history, and system configurations.</p>
+                </div>
+                <button onClick={handleExport} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl">
+                  Download Master Backup
+                </button>
+              </div>
+
+              <div className="bg-slate-50 p-10 rounded-[40px] border border-slate-200 space-y-6">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-slate-900">Import Manifest</h4>
+                  <p className="text-sm text-slate-500 mt-2">Restore data from a previously exported manifest. This will overwrite current device data.</p>
+                </div>
+                <label className="block w-full py-5 bg-emerald-600 text-white rounded-[24px] font-black text-xs text-center uppercase tracking-widest hover:scale-105 transition-all shadow-xl cursor-pointer">
+                  Upload Data Manifest
+                  <input type="file" accept=".json" className="hidden" onChange={handleImport} />
+                </label>
+              </div>
+            </div>
+
+            <div className="bg-red-50 p-10 rounded-[40px] border border-red-100 space-y-6 mt-12">
+               <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center shrink-0">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-xl font-black text-red-900 uppercase">Nuclear System Reset</h4>
+                    <p className="text-sm text-red-600 mt-1 font-bold">This will purge ALL local registry entries. This action is permanent unless a cloud sync is performed immediately.</p>
+                  </div>
+                  <button onClick={handleNuclearReset} className="px-10 py-5 bg-red-600 text-white rounded-[24px] font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-xl">
+                    Purge All Registry Data
+                  </button>
+               </div>
             </div>
           </div>
         )}

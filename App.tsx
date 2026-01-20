@@ -204,7 +204,7 @@ const App: React.FC = () => {
           <NavItem id="TRANSFERS" labelKey="transfers" icon={ICONS.Truck} />
           <NavItem id="SUPPLIERS" labelKey="suppliers" icon={ICONS.Suppliers} />
           <NavItem id="ALERTS" labelKey="alerts" icon={ICONS.Alerts} badge={unreadCount} />
-          {user.role === 'ADMIN' && <NavItem id="ADMIN" labelKey="alerts" icon={ICONS.Settings} />}
+          {user.role === 'ADMIN' && <NavItem id="ADMIN" labelKey="admin" icon={ICONS.Settings} />}
         </nav>
         <button onClick={() => { storageService.setCurrentUser(null); setUser(null); }} className="mt-auto flex items-center gap-3 w-full px-4 py-3 rounded-xl text-slate-400 hover:text-red-600 transition-colors font-bold text-sm">Sign Out</button>
       </aside>
@@ -215,7 +215,7 @@ const App: React.FC = () => {
         <button onClick={() => setView('INVENTORY')} className={`flex flex-col items-center flex-1 py-1 ${view === 'INVENTORY' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Inventory /><span className="text-[9px] font-bold">{config.labels.inventory}</span></button>
         <button onClick={() => setView('TRANSFERS')} className={`flex flex-col items-center flex-1 py-1 ${view === 'TRANSFERS' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Truck /><span className="text-[9px] font-bold">{config.labels.transfers}</span></button>
         <button onClick={() => setView('ALERTS')} className={`flex flex-col items-center flex-1 py-1 ${view === 'ALERTS' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Alerts /><span className="text-[9px] font-bold">{config.labels.alerts}</span></button>
-        {user.role === 'ADMIN' && <button onClick={() => setView('ADMIN')} className={`flex flex-col items-center flex-1 py-1 ${view === 'ADMIN' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Settings /><span className="text-[9px] font-bold">System</span></button>}
+        {user.role === 'ADMIN' && <button onClick={() => setView('ADMIN')} className={`flex flex-col items-center flex-1 py-1 ${view === 'ADMIN' ? 'text-blue-600' : 'text-slate-400'}`}><ICONS.Settings /><span className="text-[9px] font-bold">{config.labels.admin}</span></button>}
       </nav>
 
       <main className="flex-1 flex flex-col overflow-hidden">

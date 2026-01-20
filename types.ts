@@ -105,6 +105,7 @@ export interface AppConfig {
     suppliers: string;
     transfers: string;
     alerts: string;
+    admin: string;
     dashboardHeadline?: string;
     dashboardSubline?: string;
     inventoryHeadline?: string;

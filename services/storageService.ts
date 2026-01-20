@@ -236,6 +236,7 @@ export const storageService = {
         suppliers: "Vendor Network",
         transfers: "Logistics",
         alerts: "Security Alerts",
+        admin: "Facility Controls",
         dashboardHeadline: "Inventory Equilibrium",
         dashboardSubline: "Levels vs Target Thresholds",
         inventoryHeadline: "Master Registry",
@@ -252,9 +253,8 @@ export const storageService = {
     if (!stored) return defaultConf;
     try { 
       const parsed = JSON.parse(stored);
-      if (!parsed.labels.transfers) {
-        parsed.labels = { ...defaultConf.labels, ...parsed.labels };
-      }
+      // Merge missing labels
+      parsed.labels = { ...defaultConf.labels, ...(parsed.labels || {}) };
       return parsed;
     } catch (e) { return defaultConf; }
   },
