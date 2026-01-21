@@ -103,6 +103,14 @@ const App: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  const handleManualPush = async () => {
+    setCloudStatus('SYNCING');
+    const success = await storageService.pushToCloud();
+    setCloudStatus(success ? 'IDLE' : 'ERROR');
+    if (success) alert("✅ Registry mesh successfully synchronized to cloud database.");
+    else alert("❌ Sync failed. Check network connection or cloud credentials.");
+  };
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -228,9 +236,12 @@ const App: React.FC = () => {
                 {cloudStatus === 'SYNCING' ? 'SYNCING...' : cloudStatus === 'ERROR' ? 'SYNC FAILED' : dbMode === 'CLOUD' ? 'MESH ONLINE' : 'LOCAL CACHE'}
                </span>
             </div>
-            {!isOnline && <div className="flex items-center gap-2 text-red-500"><div className="w-2 h-2 bg-red-500 rounded-full"></div><span className="text-[9px] font-black uppercase tracking-widest">Offline Mode</span></div>}
           </div>
           <div className="flex gap-4">
+             <button onClick={handleManualPush} className="bg-white border-2 border-slate-900 text-slate-900 px-6 py-2 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center gap-2">
+               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+               Sync to Cloud
+             </button>
              {user.role !== 'SUPPLIER' && <button onClick={() => setShowPartForm(true)} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-black transition-colors shadow-lg">+ New Asset</button>}
           </div>
         </header>

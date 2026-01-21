@@ -138,7 +138,7 @@ const PartForm: React.FC<PartFormProps> = ({ onClose, onSave, initialData, confi
         <div className="col-span-full pt-10 flex justify-end gap-6">
           <button type="button" onClick={onClose} className="text-sm font-bold text-slate-400">Discard Changes</button>
           <button type="submit" className="bg-slate-900 text-white px-14 py-5 rounded-[24px] font-black shadow-xl hover:scale-105 transition-all text-xs uppercase tracking-widest">
-            {initialData ? 'COMMIT UPDATE' : 'REGISTER ASSET'}
+            {initialData ? 'COMMIT & SAVE TO REGISTRY' : 'REGISTER & SAVE TO REGISTRY'}
           </button>
         </div>
       </form>
