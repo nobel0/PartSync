@@ -69,10 +69,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         return;
       }
 
+      // Excel has a hard limit of 32,767 characters per cell.
+      const EXCEL_CELL_LIMIT = 32767;
+
       const excelData = parts.map(part => {
         const row: any = {};
         columns.forEach(col => {
-          row[col.label] = part[col.id] ?? '';
+          let value = part[col.id] ?? '';
+          
+          // Ensure value is a string or number for length check
+          let stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+
+          // Truncate if it exceeds Excel's limit to prevent the engine from crashing
+          if (stringValue.length > EXCEL_CELL_LIMIT) {
+            console.warn(`Truncating field "${col.label}" for part ${part.partNumber} as it exceeds 32k characters.`);
+            stringValue = stringValue.substring(0, EXCEL_CELL_LIMIT - 3) + "...";
+          }
+          
+          row[col.label] = stringValue;
         });
         return row;
       });
@@ -81,12 +95,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Asset Registry");
       
-      // Use standard writeFile for simplicity as it handles the download trigger internally
       XLSX.writeFile(workbook, `PartFlow_Registry_${new Date().toISOString().split('T')[0]}.xlsx`);
 
     } catch (error) {
       console.error("Excel Export Failure Detail:", error);
-      alert(`❌ Export failed: The spreadsheet engine could not be initialized. Technical details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`❌ Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
