@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppConfig, ColumnDefinition, Part } from '../types';
 import { ICONS } from '../constants';
 import { storageService } from '../services/storageService';
+// @ts-ignore
 import * as XLSX from 'xlsx';
 
 interface AdminPanelProps {
@@ -41,21 +42,50 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   // --- EXCEL LOGIC ---
   const handleExportExcel = () => {
-    const parts = storageService.getParts();
-    const columns = config.columns;
-    
-    const excelData = parts.map(part => {
-      const row: any = {};
-      columns.forEach(col => {
-        row[col.label] = part[col.id] ?? '';
-      });
-      return row;
-    });
+    try {
+      const parts = storageService.getParts();
+      const columns = config.columns;
+      
+      if (!parts || parts.length === 0) {
+        alert("The registry is currently empty. Add parts before exporting.");
+        return;
+      }
 
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Asset Registry");
-    XLSX.writeFile(workbook, `PartFlow_Registry_${new Date().toISOString().split('T')[0]}.xlsx`);
+      const excelData = parts.map(part => {
+        const row: any = {};
+        columns.forEach(col => {
+          row[col.label] = part[col.id] ?? '';
+        });
+        return row;
+      });
+
+      // Using the workbook object to create a worksheet
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Asset Registry");
+      
+      // Generating an ArrayBuffer for more reliable browser download handling
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PartFlow_Registry_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+
+    } catch (error) {
+      console.error("Excel Export Failure:", error);
+      alert("❌ Export failed: The spreadsheet engine could not be initialized. Please check your network connection.");
+    }
   };
 
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -64,32 +94,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const data = new Uint8Array(event.target?.result as ArrayBuffer);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      
-      const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
-      if (jsonData.length === 0) return alert("Sheet is empty.");
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+        if (!jsonData || jsonData.length === 0) return alert("The selected sheet appears to be empty.");
 
-      const rawHeaders = Object.keys(jsonData[0]);
-      const existingLabels = config.columns.map(c => c.label.toLowerCase());
-      const newHeaders = rawHeaders.filter(h => h && !existingLabels.includes(h.toLowerCase()));
+        const rawHeaders = Object.keys(jsonData[0]);
+        const existingLabels = config.columns.map(c => c.label.toLowerCase());
+        const newHeaders = rawHeaders.filter(h => h && !existingLabels.includes(h.toLowerCase()));
 
-      const mappedRows = jsonData.map(row => {
-        const obj: any = {};
-        rawHeaders.forEach(header => {
-          const existingCol = config.columns.find(c => c.label.toLowerCase() === header.toLowerCase());
-          const key = existingCol ? existingCol.id : header.toLowerCase().replace(/[^a-z0-9]/g, '_');
-          obj[key] = row[header];
+        const mappedRows = jsonData.map(row => {
+          const obj: any = {};
+          rawHeaders.forEach(header => {
+            const existingCol = config.columns.find(c => c.label.toLowerCase() === header.toLowerCase());
+            const key = existingCol ? existingCol.id : header.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            obj[key] = row[header];
+          });
+          return obj;
         });
-        return obj;
-      });
 
-      if (newHeaders.length > 0) {
-        setImportPreview({ headers: rawHeaders, rows: mappedRows, newHeaders });
-      } else {
-        processImport(mappedRows, []);
+        if (newHeaders.length > 0) {
+          setImportPreview({ headers: rawHeaders, rows: mappedRows, newHeaders });
+        } else {
+          processImport(mappedRows, []);
+        }
+      } catch (error) {
+        console.error("Import Error:", error);
+        alert("❌ Import failed: Invalid Excel format.");
       }
     };
     reader.readAsArrayBuffer(file);
