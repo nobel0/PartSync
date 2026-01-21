@@ -3,7 +3,7 @@ import { AppConfig, ColumnDefinition, Part } from '../types';
 import { ICONS } from '../constants';
 import { storageService } from '../services/storageService';
 // @ts-ignore
-import * as XLSX from 'xlsx';
+import * as XLSXModule from 'xlsx';
 
 interface AdminPanelProps {
   config: AppConfig;
@@ -40,9 +40,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     alert("✅ System Configuration Updated Successfully");
   };
 
+  /**
+   * Robustly gets the XLSX library instance from module or global scope
+   */
+  const getXLSX = () => {
+    // Check module import first
+    if (XLSXModule && XLSXModule.utils) return XLSXModule;
+    // @ts-ignore - check default export (some ESM providers)
+    if (XLSXModule && XLSXModule.default && XLSXModule.default.utils) return XLSXModule.default;
+    // @ts-ignore - check global window (fallback script)
+    if (window.XLSX && window.XLSX.utils) return window.XLSX;
+    return null;
+  };
+
   // --- EXCEL LOGIC ---
   const handleExportExcel = () => {
     try {
+      const XLSX = getXLSX();
+      if (!XLSX) {
+        throw new Error("XLSX engine not found in module or global scope.");
+      }
+
       const parts = storageService.getParts();
       const columns = config.columns;
       
@@ -59,38 +77,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         return row;
       });
 
-      // Using the workbook object to create a worksheet
       const worksheet = XLSX.utils.json_to_sheet(excelData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Asset Registry");
       
-      // Generating an ArrayBuffer for more reliable browser download handling
-      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      
-      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `PartFlow_Registry_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      
-      // Cleanup
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
+      // Use standard writeFile for simplicity as it handles the download trigger internally
+      XLSX.writeFile(workbook, `PartFlow_Registry_${new Date().toISOString().split('T')[0]}.xlsx`);
 
     } catch (error) {
-      console.error("Excel Export Failure:", error);
-      alert("❌ Export failed: The spreadsheet engine could not be initialized. Please check your network connection.");
+      console.error("Excel Export Failure Detail:", error);
+      alert(`❌ Export failed: The spreadsheet engine could not be initialized. Technical details: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const XLSX = getXLSX();
+    if (!XLSX) return alert("Spreadsheet engine not ready. Please try again in a moment.");
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -151,16 +156,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
     const newPartsList: Part[] = rows.map(row => ({
       id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      partNumber: row.partNumber || row.reference_id || `IMP-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-      name: row.name || row.part_name || "Imported Part",
+      partNumber: row.partNumber || row.reference_id || row['Reference ID'] || `IMP-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      name: row.name || row.part_name || row['Part Name'] || "Imported Part",
       description: row.description || "",
       imageUrl: row.imageUrl || "https://picsum.photos/seed/import/400/300",
-      carModel: row.carModel || config.carModels[0],
-      manufacturingShop: row.manufacturingShop || config.manufacturingShops[0],
-      currentLocation: row.currentLocation || 'WAREHOUSE',
-      currentStock: parseInt(row.currentStock) || 0,
-      targetStock: parseInt(row.targetStock) || 10,
-      supplierName: row.supplierName || "Imported Vendor",
+      carModel: row.carModel || row['Car Model'] || config.carModels[0],
+      manufacturingShop: row.manufacturingShop || row['Assigned Shop'] || config.manufacturingShops[0],
+      currentLocation: row.currentLocation || row['Current Location'] || 'WAREHOUSE',
+      currentStock: parseInt(row.currentStock || row.Stock) || 0,
+      targetStock: parseInt(row.targetStock || row.Target) || 10,
+      supplierName: row.supplierName || row.Supplier || "Imported Vendor",
       lastReceivedAt: new Date().toISOString(),
       history: [],
       updatedAt: Date.now(),
