@@ -44,7 +44,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     const parts = storageService.getParts();
     const columns = config.columns;
     
-    // Prepare data with Labels as keys for a user-friendly spreadsheet
     const excelData = parts.map(part => {
       const row: any = {};
       columns.forEach(col => {
@@ -56,8 +55,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Asset Registry");
-    
-    // Write and trigger download
     XLSX.writeFile(workbook, `PartFlow_Registry_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
@@ -72,16 +69,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       
-      // Convert to JSON
       const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
       if (jsonData.length === 0) return alert("Sheet is empty.");
 
-      // Detect headers
       const rawHeaders = Object.keys(jsonData[0]);
       const existingLabels = config.columns.map(c => c.label.toLowerCase());
       const newHeaders = rawHeaders.filter(h => h && !existingLabels.includes(h.toLowerCase()));
 
-      // Map rows from labels back to IDs
       const mappedRows = jsonData.map(row => {
         const obj: any = {};
         rawHeaders.forEach(header => {
@@ -99,14 +93,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       }
     };
     reader.readAsArrayBuffer(file);
-    // Reset input
     e.target.value = '';
   };
 
   const processImport = async (rows: any[], headersToAdd: string[]) => {
+    setIsSyncing(true);
     let updatedConfig = { ...config };
     
-    // 1. Update Schema if new headers accepted
     if (headersToAdd.length > 0) {
       headersToAdd.forEach(h => {
         const id = h.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -121,27 +114,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       setFormData(updatedConfig);
     }
 
-    // 2. Import Parts
-    for (const row of rows) {
-      const part: Part = {
-        id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        partNumber: row.partNumber || row.reference_id || `IMP-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-        name: row.name || row.part_name || "Imported Part",
-        description: row.description || "",
-        imageUrl: row.imageUrl || "https://picsum.photos/seed/import/400/300",
-        carModel: row.carModel || config.carModels[0],
-        manufacturingShop: row.manufacturingShop || config.manufacturingShops[0],
-        currentLocation: row.currentLocation || 'WAREHOUSE',
-        currentStock: parseInt(row.currentStock) || 0,
-        targetStock: parseInt(row.targetStock) || 10,
-        supplierName: row.supplierName || "Imported Vendor",
-        lastReceivedAt: new Date().toISOString(),
-        history: [],
-        updatedAt: Date.now(),
-        ...row // Spread other custom fields that were detected
-      };
-      await storageService.savePart(part);
-    }
+    const newPartsList: Part[] = rows.map(row => ({
+      id: `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      partNumber: row.partNumber || row.reference_id || `IMP-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      name: row.name || row.part_name || "Imported Part",
+      description: row.description || "",
+      imageUrl: row.imageUrl || "https://picsum.photos/seed/import/400/300",
+      carModel: row.carModel || config.carModels[0],
+      manufacturingShop: row.manufacturingShop || config.manufacturingShops[0],
+      currentLocation: row.currentLocation || 'WAREHOUSE',
+      currentStock: parseInt(row.currentStock) || 0,
+      targetStock: parseInt(row.targetStock) || 10,
+      supplierName: row.supplierName || "Imported Vendor",
+      lastReceivedAt: new Date().toISOString(),
+      history: [],
+      updatedAt: Date.now(),
+      ...row 
+    }));
+
+    await storageService.saveParts(newPartsList);
+    setIsSyncing(false);
 
     alert(`✅ Successfully imported ${rows.length} assets into the registry.`);
     setImportPreview(null);

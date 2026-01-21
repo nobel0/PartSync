@@ -276,6 +276,29 @@ export const storageService = {
     return await storageService.pushToCloud();
   },
 
+  saveParts: async (newParts: Part[]) => {
+    const parts = storageService.getParts();
+    const user = storageService.getCurrentUser();
+    const timestamp = Date.now();
+    const userHandle = user?.username || 'System';
+
+    newParts.forEach(newPart => {
+      const updatedPart = { 
+        ...newPart, 
+        id: newPart.id || `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        updatedAt: timestamp, 
+        lastModifiedBy: userHandle 
+      };
+      const idx = parts.findIndex(p => p.id === updatedPart.id);
+      if (idx >= 0) parts[idx] = updatedPart; else parts.push(updatedPart);
+      storageService.checkLowStock(updatedPart);
+    });
+
+    localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
+    storageService.notifySync();
+    return await storageService.pushToCloud();
+  },
+
   deletePart: async (id: string) => {
     const parts = storageService.getParts();
     const updated = parts.filter(p => p.id !== id);
