@@ -107,8 +107,12 @@ const App: React.FC = () => {
     setCloudStatus('SYNCING');
     const success = await storageService.pushToCloud();
     setCloudStatus(success ? 'IDLE' : 'ERROR');
-    if (success) alert("✅ Registry mesh successfully synchronized to cloud database.");
-    else alert("❌ Sync failed. Check network connection or cloud credentials.");
+    if (success) {
+      alert("✅ Registry mesh successfully synchronized to cloud database.");
+      loadData();
+    } else {
+      alert("❌ Sync failed. Check network connection or cloud credentials.");
+    }
   };
 
   useEffect(() => {
@@ -161,6 +165,9 @@ const App: React.FC = () => {
     loadData();
     setShowPartForm(false);
     setEditingPart(null);
+    if (success) {
+       console.log("Part saved and synced to cloud.");
+    }
   };
 
   const handleUpdateStock = async (id: string, qty: number, type: 'RECEIVE' | 'ISSUE') => {
@@ -227,7 +234,7 @@ const App: React.FC = () => {
       </nav>
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 lg:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-10 shrink-0">
+        <header className="h-16 lg:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-10 shrink-0 shadow-sm z-40">
           <div className="flex items-center gap-4">
             <h2 className="text-base lg:text-xl font-black text-slate-800 uppercase tracking-tight">{view}</h2>
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors ${cloudStatus === 'ERROR' ? 'bg-red-50 border-red-100 text-red-600' : dbMode === 'CLOUD' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-amber-50 border-amber-100 text-amber-600'}`}>
@@ -238,9 +245,9 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-4">
-             <button onClick={handleManualPush} className="bg-white border-2 border-slate-900 text-slate-900 px-6 py-2 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center gap-2">
+             <button onClick={handleManualPush} className="bg-white border-2 border-slate-900 text-slate-900 px-6 py-2 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-               Sync to Cloud
+               Save & Sync Cloud
              </button>
              {user.role !== 'SUPPLIER' && <button onClick={() => setShowPartForm(true)} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-black transition-colors shadow-lg">+ New Asset</button>}
           </div>
@@ -267,7 +274,7 @@ const App: React.FC = () => {
                     adminOnly
                   />
                 </div>
-                <div className="flex bg-white p-1 rounded-xl border border-slate-200 w-fit h-fit">
+                <div className="flex bg-white p-1 rounded-xl border border-slate-200 w-fit h-fit shadow-sm">
                     <button onClick={() => setDisplayMode('GRID')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'GRID' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>GRID VIEW</button>
                     <button onClick={() => setDisplayMode('SHEET')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayMode === 'SHEET' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>SHEET VIEW</button>
                 </div>
