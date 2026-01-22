@@ -1,7 +1,9 @@
+
 export interface User {
   id: string;
   username: string;
   email: string;
+  password?: string; // For managed auth
   role: 'ADMIN' | 'ENGINEER' | 'SUPPLIER';
   assignedLine: string; // Shop name or 'ALL' or Supplier Name
 }
@@ -99,6 +101,7 @@ export interface AppConfig {
   locations: PartLocation[];
   requiredFields: string[];
   columns: ColumnDefinition[];
+  users: User[]; // Managed users
   labels: {
     inventory: string;
     dashboard: string;

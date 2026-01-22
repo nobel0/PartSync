@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Part, AppConfig, User } from '../types';
 import { ICONS, LOW_STOCK_THRESHOLD } from '../constants';
+import { storageService } from '../services/storageService';
 
 interface InventoryProps {
   parts: Part[];
@@ -19,7 +20,14 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
   const filteredParts = parts.filter(p => filterShop === 'ALL' || p.manufacturingShop === filterShop);
   const uniqueShops = Array.from(new Set(parts.map(p => p.manufacturingShop))).filter(Boolean);
 
-  const canEdit = (partLine: string) => user.role === 'ADMIN' || user.assignedLine === partLine;
+  const canEdit = (partLine: string) => user.role === 'ADMIN' || user.assignedLine === partLine || user.assignedLine === 'ALL';
+  const canDelete = user.role === 'ADMIN' || user.role === 'ENGINEER';
+
+  const handleDelete = (id: string) => {
+    if (window.confirm("Permanent Asset Deletion? This cannot be undone locally.")) {
+      storageService.deletePart(id);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-20">
@@ -42,6 +50,11 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
                   <span className="bg-white/90 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm">{part.manufacturingShop}</span>
                   <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm flex items-center gap-1"><ICONS.Map /> {part.currentLocation}</span>
                 </div>
+                {canDelete && (
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(part.id); }} className="absolute top-4 right-4 p-2 bg-red-600 text-white rounded-xl opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  </button>
+                )}
               </div>
               <div className="p-6 flex-1 flex flex-col">
                 <h4 className="font-black text-slate-900 text-lg truncate">{part.name}</h4>

@@ -1,3 +1,4 @@
+
 import { Part, Notification, AppConfig, User, Transfer, Supplier, PartLocation } from '../types';
 import { LOW_STOCK_THRESHOLD } from '../constants';
 
@@ -28,69 +29,31 @@ const syncChannel = new BroadcastChannel('partflow_mesh_sync');
 let sessionLogs: CloudLog[] = [];
 let hasPerformedInitialPull = false;
 
-// Helper for valid strings
 const isValid = (val: any) => val && typeof val === 'string' && val !== 'undefined' && val !== 'null' && val.trim().length > 5;
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
     const envUrl = process.env.UPSTASH_REDIS_REST_URL;
     const envToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-    
-    if (isValid(envUrl) && isValid(envToken)) {
-      return { 
-        url: envUrl!.trim().replace(/\/$/, ''), 
-        token: envToken!.trim() 
-      };
-    }
-
+    if (isValid(envUrl) && isValid(envToken)) return { url: envUrl!.trim().replace(/\/$/, ''), token: envToken!.trim() };
     const stored = localStorage.getItem(DB_CRED_KEY);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         if (parsed.url && parsed.token) return { url: parsed.url.trim().replace(/\/$/, ''), token: parsed.token.trim() };
-      } catch (e) {
-        return null;
-      }
+      } catch (e) { return null; }
     }
     return null;
   },
 
   setDBCredentials: (creds: DBCredentials | null) => {
     if (creds && creds.url && creds.token) {
-      localStorage.setItem(DB_CRED_KEY, JSON.stringify({
-        url: creds.url.trim().replace(/\/$/, ''),
-        token: creds.token.trim()
-      }));
+      localStorage.setItem(DB_CRED_KEY, JSON.stringify({ url: creds.url.trim().replace(/\/$/, ''), token: creds.token.trim() }));
     } else {
       localStorage.removeItem(DB_CRED_KEY);
     }
     hasPerformedInitialPull = false;
     storageService.notifySync();
-  },
-
-  testConnection: async (): Promise<{ success: boolean; message: string }> => {
-    const creds = storageService.getDBCredentials();
-    if (!creds) return { success: false, message: "No Cloud Mesh Configured." };
-
-    try {
-      const testVal = `HEALTH_${Date.now()}`;
-      const response = await fetch(`${creds.url}/set/${HEALTH_KEY}/${testVal}`, {
-        headers: { Authorization: `Bearer ${creds.token}` }
-      });
-
-      if (response.status === 401) return { success: false, message: "Invalid Upstash Token." };
-      if (!response.ok) return { success: false, message: `Upstash Response Error: ${response.status}` };
-
-      const readResponse = await fetch(`${creds.url}/get/${HEALTH_KEY}`, {
-        headers: { Authorization: `Bearer ${creds.token}` }
-      });
-      
-      const readData = await readResponse.json();
-      if (readData.result === testVal) return { success: true, message: "Cloud Link Verified." };
-      return { success: false, message: "Write-Read Mismatch." };
-    } catch (e) {
-      return { success: false, message: "Network Timeout / DNS Failure." };
-    }
   },
 
   getCurrentUser: (): User | null => {
@@ -114,17 +77,11 @@ export const storageService = {
   syncWithCloud: async (force: boolean = false): Promise<{ success: boolean; mode: 'CLOUD' | 'LOCAL' }> => {
     const creds = storageService.getDBCredentials();
     if (!creds) return { success: true, mode: 'LOCAL' };
-
     try {
-      const response = await fetch(`${creds.url}/get/${MASTER_DB_KEY}`, {
-        headers: { Authorization: `Bearer ${creds.token}` }
-      });
-      
+      const response = await fetch(`${creds.url}/get/${MASTER_DB_KEY}`, { headers: { Authorization: `Bearer ${creds.token}` } });
       if (!response.ok) throw new Error(`Fetch Error: ${response.status}`);
-      
       const data = await response.json();
       hasPerformedInitialPull = true;
-      
       if (!data.result) {
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
@@ -133,11 +90,9 @@ export const storageService = {
         }
         return { success: true, mode: 'CLOUD' };
       }
-
       const remoteState = JSON.parse(data.result);
       const localUpdatedAt = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
       const remoteUpdatedAt = remoteState.lastPushAt || 0;
-
       if (remoteUpdatedAt >= localUpdatedAt || force) {
         if (remoteState.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(remoteState.parts));
         if (remoteState.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(remoteState.transfers));
@@ -157,12 +112,10 @@ export const storageService = {
   pushToCloud: async (): Promise<boolean> => {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
-
     if (!hasPerformedInitialPull) {
       await storageService.syncWithCloud();
       if (!hasPerformedInitialPull) return false;
     }
-
     try {
       const timestamp = Date.now();
       const payload = {
@@ -172,29 +125,19 @@ export const storageService = {
         config: storageService.getConfig(),
         lastPushAt: timestamp
       };
-      
       const serialized = JSON.stringify(payload);
       const response = await fetch(`${creds.url}/`, {
         method: 'POST',
-        headers: { 
-          Authorization: `Bearer ${creds.token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(["SET", MASTER_DB_KEY, serialized])
       });
-
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
         sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud.' });
         return true;
-      } else {
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'ERROR', message: `Commit rejected: ${response.status}` });
-        return false;
       }
-    } catch (e) {
-      sessionLogs.unshift({ timestamp: Date.now(), type: 'PUSH', status: 'ERROR', message: 'Mesh connection severed.' });
       return false;
-    }
+    } catch (e) { return false; }
   },
 
   getParts: (): Part[] => {
@@ -230,6 +173,9 @@ export const storageService = {
         { id: 'targetStock', label: 'Target', type: 'number', isCore: true },
         { id: 'supplierName', label: 'Supplier', type: 'text', isCore: true },
       ],
+      users: [
+        { id: 'admin_01', username: 'Administrator', email: 'abdalhady.joharji@gmail.com', password: 'admin', role: 'ADMIN', assignedLine: 'ALL' }
+      ],
       labels: { 
         inventory: "Asset Registry", 
         dashboard: "Command Center", 
@@ -246,15 +192,13 @@ export const storageService = {
         suppliersHeadline: "Vendor Management",
         suppliersSubline: "Supplier Performance Registry"
       },
-      adminEmail: "abdalhady.joharji@gmail.com",
-      adminPassword: "admin",
       updatedAt: Date.now()
     };
     if (!stored) return defaultConf;
     try { 
       const parsed = JSON.parse(stored);
-      // Merge missing labels
       parsed.labels = { ...defaultConf.labels, ...(parsed.labels || {}) };
+      parsed.users = parsed.users || defaultConf.users;
       return parsed;
     } catch (e) { return defaultConf; }
   },
@@ -281,7 +225,6 @@ export const storageService = {
     const user = storageService.getCurrentUser();
     const timestamp = Date.now();
     const userHandle = user?.username || 'System';
-
     newParts.forEach(newPart => {
       const updatedPart = { 
         ...newPart, 
@@ -293,7 +236,6 @@ export const storageService = {
       if (idx >= 0) parts[idx] = updatedPart; else parts.push(updatedPart);
       storageService.checkLowStock(updatedPart);
     });
-
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
     storageService.notifySync();
     return await storageService.pushToCloud();
@@ -320,7 +262,6 @@ export const storageService = {
     const user = storageService.getCurrentUser();
     const part = parts[idx];
     const newStock = type === 'RECEIVE' ? part.currentStock + quantity : part.currentStock - quantity;
-    
     parts[idx] = {
       ...part,
       currentStock: Math.max(0, newStock),
@@ -372,7 +313,11 @@ export const storageService = {
 
   checkLowStock: (part: Part) => {
     if (part.currentStock <= LOW_STOCK_THRESHOLD) {
-      storageService.addNotification({ partId: part.id, partName: part.name, message: `ALARM: ${part.name} low stock.`, type: 'WARNING' });
+      // Check if unread notification for this part exists to prevent spam
+      const existing = storageService.getNotifications().find(n => n.partId === part.id && !n.read);
+      if (!existing) {
+        storageService.addNotification({ partId: part.id, partName: part.name, message: `ALARM: ${part.name} low stock (${part.currentStock} units).`, type: 'WARNING' });
+      }
     }
   },
 

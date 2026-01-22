@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Part, AppConfig, User } from '../types';
 import { ICONS, LOW_STOCK_THRESHOLD } from '../constants';
@@ -23,7 +24,11 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
   };
 
   const canEdit = (partLine: string) => {
-    return user.role === 'ADMIN' || user.assignedLine === partLine;
+    return user.role === 'ADMIN' || user.assignedLine === partLine || user.assignedLine === 'ALL';
+  };
+
+  const canDelete = () => {
+    return user.role === 'ADMIN' || user.role === 'ENGINEER';
   };
 
   const handleUpdateColumnLabel = (id: string, newLabel: string) => {
@@ -53,10 +58,11 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
           </thead>
           <tbody className="divide-y divide-slate-100">
             {parts.map((part, index) => {
-              const hasPermission = canEdit(part.manufacturingShop);
+              const hasEditPermission = canEdit(part.manufacturingShop);
+              const hasDeletePermission = canDelete();
               
               return (
-                <tr key={part.id} className={`transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} ${!hasPermission ? 'text-slate-400' : 'hover:bg-blue-50/50'}`}>
+                <tr key={part.id} className={`transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} ${!hasEditPermission ? 'text-slate-400' : 'hover:bg-blue-50/50'}`}>
                   {config.columns.map(col => {
                     const val = part[col.id];
                     return (
@@ -64,9 +70,9 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                         {col.id === 'name' ? (
                           <div className="flex items-center gap-2 lg:gap-3">
                             <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
-                               <img src={part.imageUrl} className={`w-full h-full object-cover ${!hasPermission ? 'grayscale' : ''}`} alt="" />
+                               <img src={part.imageUrl} className={`w-full h-full object-cover ${!hasEditPermission ? 'grayscale' : ''}`} alt="" />
                             </div>
-                            <span className={`font-bold text-xs lg:text-sm line-clamp-1 ${hasPermission ? 'text-slate-800' : 'text-slate-400'}`}>{val}</span>
+                            <span className={`font-bold text-xs lg:text-sm line-clamp-1 ${hasEditPermission ? 'text-slate-800' : 'text-slate-400'}`}>{val}</span>
                           </div>
                         ) : col.type === 'image' ? (
                           <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm">
@@ -74,7 +80,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                           </div>
                         ) : col.id === 'currentStock' ? (
                           <div className="flex items-center gap-2">
-                             <span className={`text-xs lg:text-sm font-black px-2 py-0.5 rounded-lg ${!hasPermission ? 'bg-slate-100 text-slate-400' : (val <= LOW_STOCK_THRESHOLD ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-900')}`}>
+                             <span className={`text-xs lg:text-sm font-black px-2 py-0.5 rounded-lg ${!hasEditPermission ? 'bg-slate-100 text-slate-400' : (val <= LOW_STOCK_THRESHOLD ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-900')}`}>
                               {val?.toLocaleString()}
                             </span>
                           </div>
@@ -85,23 +91,17 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                     );
                   })}
                   <td className="px-4 lg:px-6 py-3 lg:py-4 text-right sticky right-0 bg-inherit shadow-[-10px_0_15px_rgba(0,0,0,0.02)] lg:shadow-none">
-                    <div className={`flex justify-end gap-1.5 transition-all ${hasPermission ? 'lg:opacity-0 lg:group-hover:opacity-100' : 'hidden'}`}>
-                      <button onClick={() => onReceive(part.id, 1)} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"><ICONS.Plus /></button>
-                      <button onClick={() => onEdit(part)} className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"><ICONS.Settings /></button>
-                      <button onClick={() => handleDelete(part.id)} className="p-2 bg-red-50 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition-colors">✕</button>
+                    <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {hasEditPermission && <button onClick={() => onReceive(part.id, 1)} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"><ICONS.Plus /></button>}
+                      {hasEditPermission && <button onClick={() => onEdit(part)} className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"><ICONS.Settings /></button>}
+                      {hasDeletePermission && <button onClick={() => handleDelete(part.id)} className="p-2 bg-red-50 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition-colors">✕</button>}
                     </div>
-                    {!hasPermission && <span className="text-[8px] font-black text-slate-300 uppercase">ReadOnly</span>}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {parts.length === 0 && (
-          <div className="py-20 text-center">
-            <p className="text-slate-400 font-black uppercase text-xs tracking-[0.2em]">No Assets Detected</p>
-          </div>
-        )}
       </div>
     </div>
   );
