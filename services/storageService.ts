@@ -11,7 +11,6 @@ const SUPPLIERS_KEY = 'partflow_suppliers_v10';
 const DB_CRED_KEY = 'partflow_db_credentials_v10';
 const LAST_SYNC_KEY = 'partflow_last_updated_v10';
 const MASTER_DB_KEY = 'partflow_master_v10';
-const HEALTH_KEY = 'partflow_health_check';
 
 interface DBCredentials {
   url: string;
@@ -255,6 +254,54 @@ export const storageService = {
     return await storageService.pushToCloud(); 
   },
 
+  // Fix: Added missing createTransfer method to handle logistics workflows.
+  createTransfer: async (t: Omit<Transfer, 'id' | 'timestamp' | 'status' | 'supplierSignature'>) => {
+    const transfers = storageService.getTransfers();
+    const newTransfer: Transfer = {
+      ...t,
+      id: `TRSF_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: new Date().toISOString(),
+      status: 'PENDING',
+      supplierSignature: `SIG_SUP_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+    };
+    transfers.unshift(newTransfer);
+    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers.slice(0, 100)));
+    storageService.notifySync();
+    return await storageService.pushToCloud();
+  },
+
+  // Fix: Added missing acceptTransfer method to handle logistics workflows and stock updates.
+  acceptTransfer: async (id: string) => {
+    const transfers = storageService.getTransfers();
+    const idx = transfers.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    
+    const user = storageService.getCurrentUser();
+    const transfer = transfers[idx];
+    
+    if (transfer.status !== 'PENDING') return;
+
+    transfer.status = 'COMPLETED';
+    transfer.engineerId = user?.id || 'System';
+    transfer.engineerName = user?.username || 'System';
+    transfer.engineerSignature = `SIG_ENG_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    
+    // Process stock updates for each part in the transfer to reflect receipt into the facility.
+    for (const tp of transfer.parts) {
+      await storageService.updateStock(
+        tp.partId, 
+        tp.quantity, 
+        'RECEIVE', 
+        `Transfer accepted from ${transfer.supplierName} (${transfer.id})`,
+        transfer.toLocation
+      );
+    }
+
+    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
+    storageService.notifySync();
+    return await storageService.pushToCloud();
+  },
+
   updateStock: async (partId: string, quantity: number, type: 'RECEIVE' | 'ISSUE', notes?: string, newLocation?: PartLocation) => {
     const parts = storageService.getParts();
     const idx = parts.findIndex(p => p.id === partId);
@@ -282,43 +329,41 @@ export const storageService = {
     return await storageService.pushToCloud();
   },
 
-  createTransfer: async (transfer: Omit<Transfer, 'id' | 'timestamp' | 'status' | 'supplierSignature'>) => {
-    const transfers = storageService.getTransfers();
-    const newTransfer: Transfer = {
-      ...transfer,
-      id: `TRF_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      timestamp: new Date().toISOString(),
-      status: 'PENDING',
-      supplierSignature: `SIG_${Math.random().toString(36).substr(2, 8).toUpperCase()}`
-    };
-    transfers.unshift(newTransfer);
-    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers.slice(0, 100)));
-    storageService.notifySync();
-    return await storageService.pushToCloud();
-  },
-
-  acceptTransfer: async (id: string) => {
-    const transfers = storageService.getTransfers();
-    const idx = transfers.findIndex(t => t.id === id);
+  setLocation: async (partId: string, location: PartLocation) => {
+    const parts = storageService.getParts();
+    const idx = parts.findIndex(p => p.id === partId);
     if (idx === -1) return;
     const user = storageService.getCurrentUser();
-    const transfer = transfers[idx];
-    if (transfer.status !== 'PENDING') return;
-    transfers[idx] = { ...transfer, status: 'COMPLETED', engineerId: user?.id, engineerName: user?.username, engineerSignature: `SIG_${Math.random().toString(36).substr(2, 8).toUpperCase()}` };
-    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
-    transfer.parts.forEach(p => { storageService.updateStock(p.partId, p.quantity, 'RECEIVE', `Transfer from ${transfer.fromLocation}`, transfer.toLocation); });
+    const part = parts[idx];
+    parts[idx] = {
+      ...part,
+      currentLocation: location,
+      updatedAt: Date.now(),
+      lastModifiedBy: user?.username || 'System',
+      history: [{ 
+        id: Math.random().toString(36).substr(2, 9), 
+        date: new Date().toISOString(), 
+        quantity: 0, 
+        type: 'TRANSFER_IN' as any, 
+        notes: `Delivery finalized to ${location}` 
+      }, ...part.history || []].slice(0, 50)
+    };
+    localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
     storageService.notifySync();
     return await storageService.pushToCloud();
   },
 
   checkLowStock: (part: Part) => {
     if (part.currentStock <= LOW_STOCK_THRESHOLD) {
-      // Check if unread notification for this part exists to prevent spam
       const existing = storageService.getNotifications().find(n => n.partId === part.id && !n.read);
       if (!existing) {
         storageService.addNotification({ partId: part.id, partName: part.name, message: `ALARM: ${part.name} low stock (${part.currentStock} units).`, type: 'WARNING' });
       }
     }
+  },
+
+  getNotifications: (): Notification[] => {
+    try { return JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]'); } catch (e) { return []; }
   },
 
   addNotification: (n: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
@@ -328,10 +373,6 @@ export const storageService = {
     storageService.notifySync();
   },
 
-  getNotifications: (): Notification[] => {
-    try { return JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]'); } catch (e) { return []; }
-  },
-  
   markAsRead: (id: string) => {
     const notifications = storageService.getNotifications();
     localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.map(n => n.id === id ? { ...n, read: true } : n)));

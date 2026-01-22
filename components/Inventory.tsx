@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Part, AppConfig, User } from '../types';
 import { ICONS, LOW_STOCK_THRESHOLD } from '../constants';
 import { storageService } from '../services/storageService';
@@ -14,29 +14,60 @@ interface InventoryProps {
 
 const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, onEdit }) => {
   const [filterShop, setFilterShop] = useState<string | 'ALL'>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
   const [receivingPartId, setReceivingPartId] = useState<string | null>(null);
   const [receiveQty, setReceiveQty] = useState(1);
 
-  const filteredParts = parts.filter(p => filterShop === 'ALL' || p.manufacturingShop === filterShop);
+  const filteredParts = useMemo(() => {
+    let result = parts;
+    if (filterShop !== 'ALL') {
+      result = result.filter(p => p.manufacturingShop === filterShop);
+    }
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(p => 
+        p.name.toLowerCase().includes(term) ||
+        p.partNumber.toLowerCase().includes(term) ||
+        p.description.toLowerCase().includes(term) ||
+        p.carModel.toLowerCase().includes(term) ||
+        p.supplierName.toLowerCase().includes(term)
+      );
+    }
+    return result;
+  }, [parts, filterShop, searchTerm]);
+
   const uniqueShops = Array.from(new Set(parts.map(p => p.manufacturingShop))).filter(Boolean);
 
   const canEdit = (partLine: string) => user.role === 'ADMIN' || user.assignedLine === partLine || user.assignedLine === 'ALL';
-  const canDelete = user.role === 'ADMIN' || user.role === 'ENGINEER';
+  const canDelete = user.role === 'ADMIN' || user.role === 'INTERNAL_LOGISTIC';
 
   const handleDelete = (id: string) => {
-    if (window.confirm("Permanent Asset Deletion? This cannot be undone locally.")) {
+    if (window.confirm("Permanent Asset Deletion?")) {
       storageService.deletePart(id);
     }
   };
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex flex-wrap gap-4 items-center bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
-        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">Area Filter:</span>
-        <button onClick={() => setFilterShop('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-500'}`}>All Shops</button>
-        {uniqueShops.map(shop => (
-          <button key={shop} onClick={() => setFilterShop(shop)} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === shop ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-500'}`}>{shop}</button>
-        ))}
+      {/* Search and Filters */}
+      <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+        <div className="flex items-center gap-4 bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100">
+           <div className="text-slate-400"><ICONS.Search /></div>
+           <input 
+              type="text" 
+              placeholder="Search registry..." 
+              className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+           />
+        </div>
+        <div className="flex flex-wrap gap-4 items-center">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">Area:</span>
+          <button onClick={() => setFilterShop('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === 'ALL' ? 'bg-slate-900 text-white' : 'bg-white border border-slate-100 text-slate-500'}`}>All Shops</button>
+          {uniqueShops.map(shop => (
+            <button key={shop} onClick={() => setFilterShop(shop)} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === shop ? 'bg-blue-600 text-white' : 'bg-white border border-slate-100 text-slate-500'}`}>{shop}</button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">

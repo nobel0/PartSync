@@ -4,7 +4,7 @@ export interface User {
   username: string;
   email: string;
   password?: string; // For managed auth
-  role: 'ADMIN' | 'ENGINEER' | 'SUPPLIER';
+  role: 'ADMIN' | 'INTERNAL_LOGISTIC' | 'SUPPLIER';
   assignedLine: string; // Shop name or 'ALL' or Supplier Name
 }
 
