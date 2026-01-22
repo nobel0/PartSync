@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Part, AppConfig, User } from '../types';
+import { Part, AppConfig, User, PartLocation } from '../types';
 import { ICONS, LOW_STOCK_THRESHOLD } from '../constants';
 import { storageService } from '../services/storageService';
 import { EditableLabel } from '../App';
@@ -32,121 +32,80 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
     );
   }, [parts, searchTerm]);
 
-  const handleDelete = (id: string) => {
-    if (window.confirm("Permanent Asset Deletion?")) {
-      storageService.deletePart(id);
-      onDataRefresh();
-    }
-  };
-
-  const toggleDelivery = async (partId: string) => {
-    const part = parts.find(p => p.id === partId);
-    const newLocation = part?.currentLocation === 'WAREHOUSE' ? 'SUPPLIER' : 'WAREHOUSE';
+  const handleAction = async (partId: string, newLocation: PartLocation) => {
     await storageService.setLocation(partId, newLocation);
     onDataRefresh();
   };
 
-  const handleUpdateColumnLabel = (id: string, newLabel: string) => {
-    const updatedColumns = config.columns.map(col => col.id === id ? { ...col, label: newLabel } : col);
-    onUpdateConfig({ ...config, columns: updatedColumns });
-  };
-
   const isLogistics = user.role === 'ADMIN' || user.role === 'INTERNAL_LOGISTIC';
+  const isEngineer = user.role === 'ADMIN' || user.role === 'ENGINEER';
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Search Bar */}
       <div className="bg-white p-4 rounded-[24px] border border-slate-200 shadow-sm flex items-center gap-4">
         <div className="text-slate-400"><ICONS.Search /></div>
         <input 
           type="text" 
-          placeholder="Search by ID, Name, Model, Supplier, Shop or Description..." 
-          className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600 placeholder:text-slate-300"
+          placeholder="Search by ID, Part #, Name, Model, Supplier..." 
+          className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
-        {searchTerm && (
-          <button onClick={() => setSearchTerm('')} className="text-[10px] font-black text-slate-300 hover:text-slate-900 transition-colors">CLEAR</button>
-        )}
       </div>
 
       <div className="bg-white rounded-[24px] lg:rounded-[32px] border border-slate-200 shadow-xl overflow-hidden flex flex-col flex-1">
         <div className="overflow-x-auto scrollbar-hide flex-1">
-          <table className="w-full text-left border-collapse min-w-[800px] lg:min-w-[1200px]">
+          <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead className="sticky top-0 z-20">
               <tr className="bg-slate-900 text-white">
-                {isLogistics && (
-                  <th className="px-4 lg:px-6 py-4 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] text-center w-24">Delivered</th>
-                )}
+                {isLogistics && <th className="px-6 py-4 text-[10px] font-black uppercase text-center w-24">Logistic Check</th>}
+                {isEngineer && <th className="px-6 py-4 text-[10px] font-black uppercase text-center w-24">Issue To Shop</th>}
                 {config.columns.map(col => (
-                  <th key={col.id} className="px-4 lg:px-6 py-4 lg:py-5 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap">
-                    <EditableLabel 
-                      text={col.label} 
-                      onSave={(v) => handleUpdateColumnLabel(col.id, v)} 
-                      currentUser={user}
-                      adminOnly
-                      className="text-white"
-                    />
-                  </th>
+                  <th key={col.id} className="px-6 py-4 text-[10px] font-black uppercase tracking-widest">{col.label}</th>
                 ))}
-                <th className="px-4 lg:px-6 py-4 lg:py-5 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] text-right sticky right-0 bg-slate-900">CMD</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase text-right sticky right-0 bg-slate-900">CMD</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredParts.map((part, index) => {
-                const isDelivered = part.currentLocation === 'WAREHOUSE';
-                const hasEditPermission = user.role === 'ADMIN' || user.assignedLine === part.manufacturingShop || user.assignedLine === 'ALL';
-                const hasDeletePermission = user.role === 'ADMIN' || user.role === 'INTERNAL_LOGISTIC';
+                const inWarehouse = part.currentLocation === 'WAREHOUSE';
+                const inShop = part.currentLocation === part.manufacturingShop;
                 
                 return (
-                  <tr key={part.id} className={`transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} ${!hasEditPermission ? 'text-slate-400' : 'hover:bg-blue-50/50'}`}>
+                  <tr key={part.id} className={`group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
                     {isLogistics && (
-                      <td className="px-4 lg:px-6 py-3 text-center">
+                      <td className="px-6 py-3 text-center">
                         <button 
-                          onClick={() => toggleDelivery(part.id)} 
-                          title={isDelivered ? "Remove from Warehouse" : "Mark as Delivered to Warehouse"}
-                          className={`w-8 h-8 rounded-xl border-2 transition-all flex items-center justify-center mx-auto ${isDelivered ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-slate-200 bg-white hover:border-emerald-300'}`}
+                          onClick={() => handleAction(part.id, inWarehouse ? 'SUPPLIER' : 'WAREHOUSE')} 
+                          className={`w-8 h-8 rounded-xl border-2 transition-all flex items-center justify-center mx-auto ${inWarehouse ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-slate-200'}`}
                         >
-                          {isDelivered && (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                          )}
+                          {inWarehouse && <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                         </button>
                       </td>
                     )}
-                    {config.columns.map(col => {
-                      const val = part[col.id];
-                      return (
-                        <td key={col.id} className="px-4 lg:px-6 py-3 lg:py-4">
-                          {col.id === 'name' ? (
-                            <div className="flex items-center gap-2 lg:gap-3">
-                              <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
-                                 <img src={part.imageUrl} className={`w-full h-full object-cover ${!hasEditPermission ? 'grayscale' : ''}`} alt="" />
-                              </div>
-                              <span className={`font-bold text-xs lg:text-sm line-clamp-1 ${hasEditPermission ? 'text-slate-800' : 'text-slate-400'}`}>{val}</span>
-                            </div>
-                          ) : col.type === 'image' ? (
-                            <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm">
-                               {val ? <img src={val} className="w-full h-full object-cover" alt="Preview" /> : <div className="w-full h-full flex items-center justify-center text-[7px] font-black text-slate-300 uppercase">Void</div>}
-                            </div>
-                          ) : col.id === 'currentStock' ? (
-                            <div className="flex items-center gap-2">
-                               <span className={`text-xs lg:text-sm font-black px-2 py-0.5 rounded-lg ${!hasEditPermission ? 'bg-slate-100 text-slate-400' : (val <= LOW_STOCK_THRESHOLD ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-900')}`}>
-                                {val?.toLocaleString()}
-                              </span>
-                            </div>
-                          ) : col.id === 'currentLocation' ? (
-                             <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-widest ${isDelivered ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'}`}>{val}</span>
-                          ) : (
-                            <span className="text-xs lg:text-sm font-medium truncate max-w-[150px] block">{val}</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="px-4 lg:px-6 py-3 lg:py-4 text-right sticky right-0 bg-inherit">
+                    {isEngineer && (
+                      <td className="px-6 py-3 text-center">
+                         <button 
+                          disabled={!inWarehouse && !inShop}
+                          onClick={() => handleAction(part.id, inShop ? 'WAREHOUSE' : (part.manufacturingShop as PartLocation))} 
+                          className={`w-8 h-8 rounded-xl border-2 transition-all flex items-center justify-center mx-auto ${inShop ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : inWarehouse ? 'border-blue-200 text-blue-400 hover:border-blue-400' : 'border-slate-100 text-slate-200 cursor-not-allowed'}`}
+                        >
+                          <ICONS.Map />
+                        </button>
+                      </td>
+                    )}
+                    {config.columns.map(col => (
+                      <td key={col.id} className="px-6 py-3 text-xs lg:text-sm font-medium">
+                        {col.id === 'currentLocation' ? (
+                           <span className={`px-2 py-1 rounded-lg uppercase text-[10px] font-black ${inWarehouse ? 'bg-emerald-50 text-emerald-600' : inShop ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>{part[col.id]}</span>
+                        ) : col.id === 'currentStock' ? (
+                          <span className={`px-2 py-1 rounded-lg font-black ${part[col.id] <= LOW_STOCK_THRESHOLD ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-700'}`}>{part[col.id]}</span>
+                        ) : part[col.id]}
+                      </td>
+                    ))}
+                    <td className="px-6 py-3 text-right sticky right-0 bg-inherit">
                       <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {hasEditPermission && <button onClick={() => onReceive(part.id, 1)} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"><ICONS.Plus /></button>}
-                        {hasEditPermission && <button onClick={() => onEdit(part)} className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"><ICONS.Settings /></button>}
-                        {hasDeletePermission && <button onClick={() => handleDelete(part.id)} className="p-2 bg-red-50 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition-colors">✕</button>}
+                         <button onClick={() => onEdit(part)} className="p-2 bg-slate-100 text-slate-500 rounded-lg"><ICONS.Settings /></button>
                       </div>
                     </td>
                   </tr>

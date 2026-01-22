@@ -1,19 +1,12 @@
 
+
 export interface User {
   id: string;
   username: string;
   email: string;
-  password?: string; // For managed auth
-  role: 'ADMIN' | 'INTERNAL_LOGISTIC' | 'SUPPLIER';
-  assignedLine: string; // Shop name or 'ALL' or Supplier Name
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  contactEmail: string;
-  assignedParts: string[]; // List of part IDs
-  performanceRating: number;
+  password?: string;
+  role: 'ADMIN' | 'INTERNAL_LOGISTIC' | 'ENGINEER' | 'SUPPLIER';
+  assignedLine: string; // Shop name or 'ALL'
 }
 
 export interface ColumnDefinition {
@@ -25,6 +18,15 @@ export interface ColumnDefinition {
 }
 
 export type PartLocation = 'SUPPLIER' | 'WAREHOUSE' | 'BODY_SHOP' | 'FE' | 'RF' | 'FF' | 'UB' | 'SF';
+
+// Add missing Supplier interface
+export interface Supplier {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+}
 
 export interface Part {
   id: string;
@@ -45,32 +47,19 @@ export interface Part {
   [key: string]: any;
 }
 
-export interface TransferPart {
-  partId: string;
-  partNumber: string;
-  name: string;
-  quantity: number;
-}
-
 export interface Transfer {
   id: string;
   timestamp: string;
-  parts: TransferPart[];
+  parts: Array<{ partId: string; partNumber: string; name: string; quantity: number }>;
   fromLocation: PartLocation;
   toLocation: PartLocation;
   status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
   supplierId: string;
   supplierName: string;
-  supplierSignature?: string; // Digital token (Excel friendly)
+  supplierSignature?: string;
   engineerId?: string;
   engineerName?: string;
-  engineerSignature?: string; // Digital token (Excel friendly)
-}
-
-export interface Conflict {
-  partId: string;
-  localVersion: Part;
-  remoteVersion: Part;
+  engineerSignature?: string;
 }
 
 export interface Transaction {
@@ -101,25 +90,8 @@ export interface AppConfig {
   locations: PartLocation[];
   requiredFields: string[];
   columns: ColumnDefinition[];
-  users: User[]; // Managed users
-  labels: {
-    inventory: string;
-    dashboard: string;
-    suppliers: string;
-    transfers: string;
-    alerts: string;
-    admin: string;
-    dashboardHeadline?: string;
-    dashboardSubline?: string;
-    inventoryHeadline?: string;
-    inventorySubline?: string;
-    transfersHeadline?: string;
-    transfersSubline?: string;
-    suppliersHeadline?: string;
-    suppliersSubline?: string;
-  };
-  adminEmail?: string;
-  adminPassword?: string;
+  users: User[];
+  labels: Record<string, string>;
   updatedAt: number;
 }
 
