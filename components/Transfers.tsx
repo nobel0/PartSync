@@ -9,11 +9,9 @@ interface TransfersProps {
   parts: Part[];
   config: AppConfig;
   onTransferComplete: () => void;
-  // Fix: Added missing onUpdateLabel prop to satisfy App.tsx usage
   onUpdateLabel?: (key: string, val: string) => void;
 }
 
-// Internal EditableLabel component for consistent header editing
 const EditableLabel: React.FC<{
   text: string;
   onSave: (newText: string) => void;
@@ -50,7 +48,6 @@ const Transfers: React.FC<TransfersProps> = ({ user, parts, config, onTransferCo
   const [transfers, setTransfers] = useState<Transfer[]>(storageService.getTransfers());
   const [showDispatch, setShowDispatch] = useState(false);
   
-  // Dispatch Form State
   const [selectedPartId, setSelectedPartId] = useState('');
   const [qty, setQty] = useState(1);
   const [toLocation, setToLocation] = useState<PartLocation>('WAREHOUSE');
@@ -82,7 +79,6 @@ const Transfers: React.FC<TransfersProps> = ({ user, parts, config, onTransferCo
     <div className="max-w-5xl mx-auto space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          {/* Fix: Wrapped headers in EditableLabel for consistency and error resolution */}
           <EditableLabel 
             text={config.labels.transfersHeadline || ''} 
             onSave={(v) => onUpdateLabel?.('transfersHeadline', v)}
@@ -131,11 +127,11 @@ const Transfers: React.FC<TransfersProps> = ({ user, parts, config, onTransferCo
                   </div>
                   {t.engineerSignature ? (
                     <div className="flex flex-col">
-                      <span className="text-[8px] font-black text-slate-300 uppercase">Engineer Sign</span>
+                      <span className="text-[8px] font-black text-slate-300 uppercase">Logistic Sign</span>
                       <span className="text-[9px] font-mono text-slate-400 truncate max-w-[100px]">{t.engineerSignature}</span>
                     </div>
                   ) : (
-                    user.role === 'ENGINEER' && t.status === 'PENDING' && (
+                    (user.role === 'ADMIN' || user.role === 'INTERNAL_LOGISTIC') && t.status === 'PENDING' && (
                       <button onClick={() => handleAccept(t.id)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black shadow-lg">ACKNOWLEDGE & SIGN</button>
                     )
                   )}
@@ -169,7 +165,7 @@ const Transfers: React.FC<TransfersProps> = ({ user, parts, config, onTransferCo
                  </select>
               </div>
               <div className="bg-blue-50 p-4 rounded-xl text-[10px] font-bold text-blue-600 border border-blue-100">
-                Action: Dispatch will be signed as {user.username}. Waiting for Engineer signature upon arrival.
+                Action: Dispatch will be signed as {user.username}. Waiting for Logistic signature upon arrival.
               </div>
               <div className="flex gap-4">
                  <button onClick={() => setShowDispatch(false)} className="flex-1 py-4 text-slate-400 font-bold">Cancel</button>

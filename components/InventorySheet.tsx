@@ -40,7 +40,9 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
   };
 
   const toggleDelivery = async (partId: string) => {
-    await storageService.setLocation(partId, 'WAREHOUSE');
+    const part = parts.find(p => p.id === partId);
+    const newLocation = part?.currentLocation === 'WAREHOUSE' ? 'SUPPLIER' : 'WAREHOUSE';
+    await storageService.setLocation(partId, newLocation);
     onDataRefresh();
   };
 
@@ -58,7 +60,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
         <div className="text-slate-400"><ICONS.Search /></div>
         <input 
           type="text" 
-          placeholder="Search by ID, Name, Model, Supplier or Description..." 
+          placeholder="Search by ID, Name, Model, Supplier, Shop or Description..." 
           className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600 placeholder:text-slate-300"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -74,7 +76,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
             <thead className="sticky top-0 z-20">
               <tr className="bg-slate-900 text-white">
                 {isLogistics && (
-                  <th className="px-4 lg:px-6 py-4 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] text-center w-20">Delivered</th>
+                  <th className="px-4 lg:px-6 py-4 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] text-center w-24">Delivered</th>
                 )}
                 {config.columns.map(col => (
                   <th key={col.id} className="px-4 lg:px-6 py-4 lg:py-5 text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap">
@@ -102,10 +104,11 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                       <td className="px-4 lg:px-6 py-3 text-center">
                         <button 
                           onClick={() => toggleDelivery(part.id)} 
-                          className={`w-6 h-6 rounded-lg border-2 transition-all flex items-center justify-center ${isDelivered ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-slate-200 hover:border-emerald-300'}`}
+                          title={isDelivered ? "Remove from Warehouse" : "Mark as Delivered to Warehouse"}
+                          className={`w-8 h-8 rounded-xl border-2 transition-all flex items-center justify-center mx-auto ${isDelivered ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-slate-200 bg-white hover:border-emerald-300'}`}
                         >
                           {isDelivered && (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                           )}
                         </button>
                       </td>
@@ -132,7 +135,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                               </span>
                             </div>
                           ) : col.id === 'currentLocation' ? (
-                             <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase ${isDelivered ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'}`}>{val}</span>
+                             <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-widest ${isDelivered ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'}`}>{val}</span>
                           ) : (
                             <span className="text-xs lg:text-sm font-medium truncate max-w-[150px] block">{val}</span>
                           )}
