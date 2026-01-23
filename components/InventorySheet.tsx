@@ -21,22 +21,13 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
   const filteredParts = useMemo(() => {
     if (!searchTerm.trim()) return parts;
     const term = searchTerm.toLowerCase();
+    
     return parts.filter(p => {
-      const name = (p.name || '').toString().toLowerCase();
-      const pn = (p.partNumber || '').toString().toLowerCase();
-      const desc = (p.description || '').toString().toLowerCase();
-      const model = (p.carModel || '').toString().toLowerCase();
-      const supplier = (p.supplierName || '').toString().toLowerCase();
-      const shop = (p.manufacturingShop || '').toString().toLowerCase();
-      const id = (p.id || '').toString().toLowerCase();
-
-      return name.includes(term) || 
-             pn.includes(term) || 
-             desc.includes(term) || 
-             model.includes(term) || 
-             supplier.includes(term) || 
-             shop.includes(term) || 
-             id.includes(term);
+      // Scan every field for the search term
+      return Object.entries(p).some(([key, value]) => {
+        if (key === 'history' || key === 'imageUrl' || value === null || value === undefined) return false;
+        return value.toString().toLowerCase().includes(term);
+      });
     });
   }, [parts, searchTerm]);
 
@@ -54,12 +45,12 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
         <div className="text-slate-400 pl-2"><ICONS.Search /></div>
         <input 
           type="text" 
-          placeholder="Omni-Search Registry (ID, PN, Name, Model, Supplier, Shop)..." 
+          placeholder="Omni-Search Registry (Scans all IDs, Shops, Names, and Custom Fields)..." 
           className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600 placeholder:text-slate-300"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
-        {searchTerm && <button onClick={() => setSearchTerm('')} className="pr-2 text-[10px] font-black text-slate-300 hover:text-slate-900 transition-colors uppercase">Clear</button>}
+        {searchTerm && <button onClick={() => setSearchTerm('')} className="pr-4 text-[10px] font-black text-slate-300 hover:text-slate-900 transition-colors uppercase">Clear</button>}
       </div>
 
       <div className="bg-white rounded-[24px] lg:rounded-[32px] border border-slate-200 shadow-xl overflow-hidden flex flex-col flex-1">
@@ -117,7 +108,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                               <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
                                  <img src={part.imageUrl} className="w-full h-full object-cover" alt="" />
                               </div>
-                              <span className="font-bold truncate max-w-[200px]">{part[col.id]}</span>
+                              <span className="font-bold truncate max-w-[200px] text-slate-900">{part[col.id]}</span>
                            </div>
                         ) : part[col.id]}
                       </td>

@@ -20,26 +20,24 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
 
   const filteredParts = useMemo(() => {
     let result = parts;
+    
+    // Apply Shop Filter
     if (filterShop !== 'ALL') {
       result = result.filter(p => p.manufacturingShop === filterShop);
     }
+    
+    // Apply Global Search across ALL keys
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(p => {
-        // Safe string conversion to prevent crashes if fields are missing
-        const name = (p.name || '').toString().toLowerCase();
-        const pn = (p.partNumber || '').toString().toLowerCase();
-        const desc = (p.description || '').toString().toLowerCase();
-        const model = (p.carModel || '').toString().toLowerCase();
-        const supplier = (p.supplierName || '').toString().toLowerCase();
-        const id = (p.id || '').toString().toLowerCase();
-
-        return name.includes(term) || 
-               pn.includes(term) || 
-               desc.includes(term) || 
-               model.includes(term) || 
-               supplier.includes(term) ||
-               id.includes(term);
+        // Scan every value in the object for the term
+        return Object.entries(p).some(([key, value]) => {
+          // Skip internal complex objects like history array or images
+          if (key === 'history' || key === 'imageUrl' || value === null || value === undefined) return false;
+          
+          const strValue = value.toString().toLowerCase();
+          return strValue.includes(term);
+        });
       });
     }
     return result;
@@ -64,17 +62,20 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
            <div className="text-slate-400"><ICONS.Search /></div>
            <input 
               type="text" 
-              placeholder="Search registry..." 
+              placeholder="Omni-Search (e.g. P700, Chassis, Rear Axle...)" 
               className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
            />
+           {searchTerm && (
+             <button onClick={() => setSearchTerm('')} className="text-slate-400 hover:text-slate-900 px-2 text-[10px] font-black uppercase">Clear</button>
+           )}
         </div>
         <div className="flex flex-wrap gap-4 items-center">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">Area:</span>
-          <button onClick={() => setFilterShop('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === 'ALL' ? 'bg-slate-900 text-white' : 'bg-white border border-slate-100 text-slate-500'}`}>All Shops</button>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">Facility Filter:</span>
+          <button onClick={() => setFilterShop('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === 'ALL' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white border border-slate-100 text-slate-500 hover:bg-slate-50'}`}>Global View</button>
           {uniqueShops.map(shop => (
-            <button key={shop} onClick={() => setFilterShop(shop)} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === shop ? 'bg-blue-600 text-white' : 'bg-white border border-slate-100 text-slate-500'}`}>{shop}</button>
+            <button key={shop} onClick={() => setFilterShop(shop)} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${filterShop === shop ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border border-slate-100 text-slate-500 hover:bg-slate-50'}`}>{shop}</button>
           ))}
         </div>
       </div>
@@ -91,7 +92,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
                   <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm flex items-center gap-1"><ICONS.Map /> {part.currentLocation}</span>
                 </div>
                 {canDelete && (
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(part.id); }} className="absolute top-4 right-4 p-2 bg-red-600 text-white rounded-xl opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(part.id); }} className="absolute top-4 right-4 p-2 bg-red-600 text-white rounded-xl opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-red-700">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                   </button>
                 )}
@@ -117,7 +118,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
                   </div>
                 ) : (
                   <div className="flex gap-2 mt-6">
-                    <button disabled={!hasPermission} onClick={() => setReceivingPartId(part.id)} className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all ${hasPermission ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                    <button disabled={!hasPermission} onClick={() => setReceivingPartId(part.id)} className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all ${hasPermission ? 'bg-slate-900 text-white hover:bg-black' : 'bg-slate-100 text-slate-400'}`}>
                       {hasPermission ? 'INTAKE' : 'READ ONLY'}
                     </button>
                     {hasPermission && <button onClick={() => onEdit(part)} className="p-3 bg-slate-50 border rounded-xl text-slate-400 hover:text-slate-900"><ICONS.Settings /></button>}
@@ -127,6 +128,14 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
             </div>
           );
         })}
+        {filteredParts.length === 0 && (
+          <div className="col-span-full py-20 text-center">
+             <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                <ICONS.Search />
+             </div>
+             <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No matching assets found in registry</p>
+          </div>
+        )}
       </div>
     </div>
   );
