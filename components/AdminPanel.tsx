@@ -197,8 +197,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
                 // Add image to worksheet at specific cell
                 worksheet.addImage(imageId, {
-                  tl: { col: colIndex, row: row.number - 1 + 0.1 }, // Top-left with slight padding
-                  br: { col: colIndex + 1, row: row.number - 0.1 }  // Bottom-right
+                  tl: { col: colIndex, row: row.number - 1 + 0.1 } as any, // Top-left with slight padding
+                  br: { col: colIndex + 1, row: row.number - 0.1 } as any  // Bottom-right
                 });
 
                 // Clear the text content so user doesn't see base64 string
