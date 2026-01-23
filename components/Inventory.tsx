@@ -13,7 +13,7 @@ interface InventoryProps {
 }
 
 const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, onEdit }) => {
-  const [filterShop, setFilterShop] = useState<string | 'ALL'>('ALL');
+  const [filterShop, setFilterShop] = useState<string | 'ALL'>( 'ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [receivingPartId, setReceivingPartId] = useState<string | null>(null);
   const [receiveQty, setReceiveQty] = useState(1);
@@ -25,13 +25,22 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
     }
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      result = result.filter(p => 
-        p.name.toLowerCase().includes(term) ||
-        p.partNumber.toLowerCase().includes(term) ||
-        p.description.toLowerCase().includes(term) ||
-        p.carModel.toLowerCase().includes(term) ||
-        p.supplierName.toLowerCase().includes(term)
-      );
+      result = result.filter(p => {
+        // Safe string conversion to prevent crashes if fields are missing
+        const name = (p.name || '').toString().toLowerCase();
+        const pn = (p.partNumber || '').toString().toLowerCase();
+        const desc = (p.description || '').toString().toLowerCase();
+        const model = (p.carModel || '').toString().toLowerCase();
+        const supplier = (p.supplierName || '').toString().toLowerCase();
+        const id = (p.id || '').toString().toLowerCase();
+
+        return name.includes(term) || 
+               pn.includes(term) || 
+               desc.includes(term) || 
+               model.includes(term) || 
+               supplier.includes(term) ||
+               id.includes(term);
+      });
     }
     return result;
   }, [parts, filterShop, searchTerm]);

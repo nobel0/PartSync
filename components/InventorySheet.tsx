@@ -21,15 +21,23 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
   const filteredParts = useMemo(() => {
     if (!searchTerm.trim()) return parts;
     const term = searchTerm.toLowerCase();
-    return parts.filter(p => 
-      p.name.toLowerCase().includes(term) ||
-      p.partNumber.toLowerCase().includes(term) ||
-      p.description.toLowerCase().includes(term) ||
-      p.carModel.toLowerCase().includes(term) ||
-      p.supplierName.toLowerCase().includes(term) ||
-      p.manufacturingShop.toLowerCase().includes(term) ||
-      p.id.toLowerCase().includes(term)
-    );
+    return parts.filter(p => {
+      const name = (p.name || '').toString().toLowerCase();
+      const pn = (p.partNumber || '').toString().toLowerCase();
+      const desc = (p.description || '').toString().toLowerCase();
+      const model = (p.carModel || '').toString().toLowerCase();
+      const supplier = (p.supplierName || '').toString().toLowerCase();
+      const shop = (p.manufacturingShop || '').toString().toLowerCase();
+      const id = (p.id || '').toString().toLowerCase();
+
+      return name.includes(term) || 
+             pn.includes(term) || 
+             desc.includes(term) || 
+             model.includes(term) || 
+             supplier.includes(term) || 
+             shop.includes(term) || 
+             id.includes(term);
+    });
   }, [parts, searchTerm]);
 
   const handleAction = async (partId: string, newLocation: PartLocation) => {
