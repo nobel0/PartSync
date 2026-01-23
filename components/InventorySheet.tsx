@@ -20,13 +20,16 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
 
   const filteredParts = useMemo(() => {
     if (!searchTerm.trim()) return parts;
-    const term = searchTerm.toLowerCase();
+    const term = searchTerm.toLowerCase().trim();
     
     return parts.filter(p => {
-      // Scan every field for the search term
+      // Robust Omni-Search that only scans primitives
       return Object.entries(p).some(([key, value]) => {
-        if (key === 'history' || key === 'imageUrl' || value === null || value === undefined) return false;
-        return value.toString().toLowerCase().includes(term);
+        if (['history', 'imageUrl', 'updatedAt', 'lastReceivedAt'].includes(key)) return false;
+        if (typeof value === 'string' || typeof value === 'number') {
+          return value.toString().toLowerCase().includes(term);
+        }
+        return false;
       });
     });
   }, [parts, searchTerm]);
@@ -45,7 +48,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
         <div className="text-slate-400 pl-2"><ICONS.Search /></div>
         <input 
           type="text" 
-          placeholder="Omni-Search Registry (Scans all IDs, Shops, Names, and Custom Fields)..." 
+          placeholder="Omni-Search Sheet (IDs, Models, Serial Numbers, Shops)..." 
           className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600 placeholder:text-slate-300"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -78,7 +81,6 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                       <td className="px-6 py-3 text-center border-r border-slate-100">
                         <button 
                           onClick={() => handleAction(part.id, inWarehouse ? 'SUPPLIER' : 'WAREHOUSE')} 
-                          title={inWarehouse ? "Move back to Supplier status" : "Confirm Warehouse Delivery"}
                           className={`w-10 h-10 rounded-2xl border-2 transition-all flex items-center justify-center mx-auto shadow-sm ${inWarehouse ? 'bg-emerald-500 border-emerald-500 text-white shadow-emerald-200' : 'border-slate-200 bg-white hover:border-emerald-300 text-slate-300'}`}
                         >
                           {inWarehouse ? <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : <ICONS.Truck />}
@@ -90,7 +92,6 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                          <button 
                           disabled={!inWarehouse && !inShop}
                           onClick={() => handleAction(part.id, inShop ? 'WAREHOUSE' : shopLocation)} 
-                          title={inShop ? "Return to Warehouse" : `Issue to ${part.manufacturingShop}`}
                           className={`w-10 h-10 rounded-2xl border-2 transition-all flex items-center justify-center mx-auto shadow-sm ${inShop ? 'bg-blue-600 border-blue-600 text-white shadow-blue-200' : inWarehouse ? 'border-blue-300 bg-white text-blue-500 hover:bg-blue-50' : 'border-slate-100 bg-slate-50 text-slate-200 cursor-not-allowed'}`}
                         >
                           <ICONS.Map />
@@ -100,17 +101,17 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                     {config.columns.map(col => (
                       <td key={col.id} className="px-6 py-4 text-xs font-medium text-slate-700">
                         {col.id === 'currentLocation' ? (
-                           <span className={`px-2 py-1 rounded-lg uppercase text-[10px] font-black tracking-widest ${inWarehouse ? 'bg-emerald-50 text-emerald-600' : inShop ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>{part[col.id]}</span>
+                           <span className={`px-2 py-1 rounded-lg uppercase text-[10px] font-black tracking-widest ${inWarehouse ? 'bg-emerald-50 text-emerald-600' : inShop ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>{part[col.id] || 'UNKNOWN'}</span>
                         ) : col.id === 'currentStock' ? (
-                          <span className={`px-3 py-1 rounded-lg font-black ${part[col.id] <= LOW_STOCK_THRESHOLD ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-900'}`}>{part[col.id]?.toLocaleString()}</span>
+                          <span className={`px-3 py-1 rounded-lg font-black ${(part[col.id] || 0) <= LOW_STOCK_THRESHOLD ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-900'}`}>{(part[col.id] || 0).toLocaleString()}</span>
                         ) : col.id === 'name' ? (
                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
-                                 <img src={part.imageUrl} className="w-full h-full object-cover" alt="" />
+                              <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0 shadow-inner">
+                                 <img src={part.imageUrl || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" alt="" />
                               </div>
-                              <span className="font-bold truncate max-w-[200px] text-slate-900">{part[col.id]}</span>
+                              <span className="font-bold truncate max-w-[200px] text-slate-900">{part[col.id] || 'UNTITLED ASSET'}</span>
                            </div>
-                        ) : part[col.id]}
+                        ) : (part[col.id] || '—')}
                       </td>
                     ))}
                     <td className="px-6 py-4 text-right sticky right-0 bg-white/90 backdrop-blur-sm group-hover:bg-blue-50/90 transition-colors">

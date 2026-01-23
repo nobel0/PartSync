@@ -26,16 +26,17 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
       result = result.filter(p => p.manufacturingShop === filterShop);
     }
     
-    // 2. Apply Omni-Search (Case Insensitive scan of all properties)
+    // 2. Crash-Proof Omni-Search (Case Insensitive scan of all properties)
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
       result = result.filter(p => {
         // We iterate over the values of the part object
         return Object.entries(p).some(([key, value]) => {
-          // Skip non-searchable fields
-          if (['history', 'imageUrl', 'updatedAt'].includes(key)) return false;
+          // Skip non-searchable complex fields or metadata to prevent crashes
+          if (['history', 'imageUrl', 'updatedAt', 'lastReceivedAt'].includes(key)) return false;
           
-          if (value !== null && value !== undefined) {
+          // CRITICAL: Only scan string/number primitives
+          if (typeof value === 'string' || typeof value === 'number') {
             const strVal = value.toString().toLowerCase();
             return strVal.includes(term);
           }
@@ -65,7 +66,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
            <div className="text-slate-400"><ICONS.Search /></div>
            <input 
               type="text" 
-              placeholder="Search anything (PN, Model, Shop, Name, etc.)..." 
+              placeholder="Search registry (e.g. P700, Engine, Rear Axle)..." 
               className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -89,7 +90,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
           return (
             <div key={part.id} className={`bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden flex flex-col group transition-all ${!hasPermission ? 'opacity-80' : 'hover:-translate-y-1'}`}>
               <div className="relative h-48 bg-slate-100">
-                <img src={part.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                <img src={part.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" alt={part.name} />
                 <div className="absolute top-4 left-4 flex flex-col gap-1">
                   <span className="bg-white/90 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm">{part.manufacturingShop}</span>
                   <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm flex items-center gap-1"><ICONS.Map /> {part.currentLocation}</span>
@@ -105,7 +106,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{part.partNumber}</p>
                 <div className="mt-4 flex items-center justify-between">
                    <div className="flex flex-col">
-                      <span className="text-[8px] font-black text-slate-400 uppercase">Availability</span>
+                      <span className="text-[8px] font-black text-slate-400 uppercase">Stock</span>
                       <span className={`text-2xl font-black ${part.currentStock <= LOW_STOCK_THRESHOLD ? 'text-red-600' : 'text-slate-900'}`}>{part.currentStock}</span>
                    </div>
                    <div className="text-right">
@@ -115,16 +116,16 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
                 </div>
                 {receivingPartId === part.id ? (
                   <div className="flex gap-2 mt-6">
-                    <input type="number" autoFocus className="w-16 px-3 py-2 bg-slate-50 border rounded-xl font-bold" value={receiveQty} onChange={e => setReceiveQty(parseInt(e.target.value))} />
+                    <input type="number" autoFocus className="w-16 px-3 py-2 bg-slate-50 border rounded-xl font-bold" value={receiveQty} onChange={e => setReceiveQty(parseInt(e.target.value) || 0)} />
                     <button onClick={() => { onReceive(part.id, receiveQty); setReceivingPartId(null); }} className="flex-1 bg-emerald-600 text-white rounded-xl text-[10px] font-black">Commit</button>
                     <button onClick={() => setReceivingPartId(null)} className="p-2 text-slate-400">✕</button>
                   </div>
                 ) : (
                   <div className="flex gap-2 mt-6">
-                    <button disabled={!hasPermission} onClick={() => setReceivingPartId(part.id)} className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all ${hasPermission ? 'bg-slate-900 text-white hover:bg-black' : 'bg-slate-100 text-slate-400'}`}>
-                      {hasPermission ? 'INTAKE' : 'READ ONLY'}
+                    <button disabled={!hasPermission} onClick={() => setReceivingPartId(part.id)} className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all ${hasPermission ? 'bg-slate-900 text-white hover:bg-black shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
+                      {hasPermission ? 'QUICK INTAKE' : 'READ ONLY'}
                     </button>
-                    {hasPermission && <button onClick={() => onEdit(part)} className="p-3 bg-slate-50 border rounded-xl text-slate-400 hover:text-slate-900"><ICONS.Settings /></button>}
+                    {hasPermission && <button onClick={() => onEdit(part)} className="p-3 bg-slate-50 border rounded-xl text-slate-400 hover:text-slate-900 transition-colors"><ICONS.Settings /></button>}
                   </div>
                 )}
               </div>
@@ -132,11 +133,11 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
           );
         })}
         {filteredParts.length === 0 && (
-          <div className="col-span-full py-20 text-center">
-             <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+          <div className="col-span-full py-20 text-center animate-in fade-in duration-500">
+             <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200">
                 <ICONS.Search />
              </div>
-             <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No matching results for "{searchTerm}"</p>
+             <p className="text-slate-400 font-black text-xs uppercase tracking-[0.2em]">No matches found for "{searchTerm}"</p>
           </div>
         )}
       </div>
