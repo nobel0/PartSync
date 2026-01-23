@@ -59,8 +59,8 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
           <table className="w-full text-left border-collapse min-w-[1400px]">
             <thead className="sticky top-0 z-20">
               <tr className="bg-slate-900 text-white">
-                {isLogistics && <th className="px-6 py-5 text-[10px] font-black uppercase text-center w-32 tracking-[0.2em] border-r border-white/5">Warehouse In</th>}
-                {isEngineer && <th className="px-6 py-5 text-[10px] font-black uppercase text-center w-32 tracking-[0.2em] border-r border-white/5">Line Release</th>}
+                {isLogistics && <th className="px-6 py-5 text-[10px] font-black uppercase text-center w-32 tracking-[0.2em] border-r border-white/5">Warehouse Check</th>}
+                {isEngineer && <th className="px-6 py-5 text-[10px] font-black uppercase text-center w-32 tracking-[0.2em] border-r border-white/5">Issue Release</th>}
                 {config.columns.map(col => (
                   <th key={col.id} className="px-6 py-5 text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap">{col.label}</th>
                 ))}
@@ -70,8 +70,8 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
             <tbody className="divide-y divide-slate-100">
               {filteredParts.map((part, index) => {
                 const inWarehouse = part.currentLocation === 'WAREHOUSE';
-                const inShop = part.currentLocation === part.manufacturingShop;
-                const canEngineerMove = inWarehouse && !inShop;
+                const shopLocation = part.manufacturingShop as PartLocation;
+                const inShop = part.currentLocation === shopLocation;
                 
                 return (
                   <tr key={part.id} className={`group transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} hover:bg-blue-50/30`}>
@@ -90,9 +90,9 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
                       <td className="px-6 py-3 text-center border-r border-slate-100">
                          <button 
                           disabled={!inWarehouse && !inShop}
-                          onClick={() => handleAction(part.id, inShop ? 'WAREHOUSE' : (part.manufacturingShop as PartLocation))} 
-                          title={inShop ? "Return to Warehouse" : "Issue to Shop Line"}
-                          className={`w-10 h-10 rounded-2xl border-2 transition-all flex items-center justify-center mx-auto shadow-sm ${inShop ? 'bg-blue-600 border-blue-600 text-white shadow-blue-200' : canEngineerMove ? 'border-blue-300 bg-white text-blue-500 hover:bg-blue-50' : 'border-slate-100 bg-slate-50 text-slate-200 cursor-not-allowed'}`}
+                          onClick={() => handleAction(part.id, inShop ? 'WAREHOUSE' : shopLocation)} 
+                          title={inShop ? "Return to Warehouse" : `Issue to ${part.manufacturingShop}`}
+                          className={`w-10 h-10 rounded-2xl border-2 transition-all flex items-center justify-center mx-auto shadow-sm ${inShop ? 'bg-blue-600 border-blue-600 text-white shadow-blue-200' : inWarehouse ? 'border-blue-300 bg-white text-blue-500 hover:bg-blue-50' : 'border-slate-100 bg-slate-50 text-slate-200 cursor-not-allowed'}`}
                         >
                           <ICONS.Map />
                         </button>

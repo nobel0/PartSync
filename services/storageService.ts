@@ -19,7 +19,7 @@ interface DBCredentials {
 
 interface CloudLog {
   timestamp: number;
-  type: 'PUSH' | 'PULL' | 'TEST' | 'ERROR';
+  type: 'PUSH' | 'PULL' | 'TEST' | 'ERROR' | 'BACKUP' | 'RESTORE';
   status: 'SUCCESS' | 'ERROR';
   message: string;
 }
@@ -139,6 +139,47 @@ export const storageService = {
     } catch (e) { return false; }
   },
 
+  exportBackup: () => {
+    const state = {
+      parts: storageService.getParts(),
+      transfers: storageService.getTransfers(),
+      suppliers: storageService.getSuppliers(),
+      config: storageService.getConfig(),
+      timestamp: Date.now()
+    };
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `partflow_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    sessionLogs.unshift({ timestamp: Date.now(), type: 'BACKUP', status: 'SUCCESS', message: 'Local JSON backup generated.' });
+  },
+
+  importBackup: async (file: File) => {
+    return new Promise<boolean>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const state = JSON.parse(e.target?.result as string);
+          if (state.parts) localStorage.setItem(PARTS_KEY, JSON.stringify(state.parts));
+          if (state.transfers) localStorage.setItem(TRANSFERS_KEY, JSON.stringify(state.transfers));
+          if (state.suppliers) localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(state.suppliers));
+          if (state.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(state.config));
+          localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
+          storageService.notifySync();
+          await storageService.pushToCloud();
+          sessionLogs.unshift({ timestamp: Date.now(), type: 'RESTORE', status: 'SUCCESS', message: 'Local JSON backup restored and synced.' });
+          resolve(true);
+        } catch (err) {
+          sessionLogs.unshift({ timestamp: Date.now(), type: 'RESTORE', status: 'ERROR', message: 'Invalid backup file.' });
+          resolve(false);
+        }
+      };
+      reader.readAsText(file);
+    });
+  },
+
   getParts: (): Part[] => {
     try { return JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'); } catch (e) { return []; }
   },
@@ -254,7 +295,6 @@ export const storageService = {
     return await storageService.pushToCloud(); 
   },
 
-  // Fix: Added missing createTransfer method to handle logistics workflows.
   createTransfer: async (t: Omit<Transfer, 'id' | 'timestamp' | 'status' | 'supplierSignature'>) => {
     const transfers = storageService.getTransfers();
     const newTransfer: Transfer = {
@@ -270,7 +310,6 @@ export const storageService = {
     return await storageService.pushToCloud();
   },
 
-  // Fix: Added missing acceptTransfer method to handle logistics workflows and stock updates.
   acceptTransfer: async (id: string) => {
     const transfers = storageService.getTransfers();
     const idx = transfers.findIndex(t => t.id === id);
@@ -284,15 +323,14 @@ export const storageService = {
     transfer.status = 'COMPLETED';
     transfer.engineerId = user?.id || 'System';
     transfer.engineerName = user?.username || 'System';
-    transfer.engineerSignature = `SIG_ENG_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    transfer.engineerSignature = `SIG_LOG_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
     
-    // Process stock updates for each part in the transfer to reflect receipt into the facility.
     for (const tp of transfer.parts) {
       await storageService.updateStock(
         tp.partId, 
         tp.quantity, 
         'RECEIVE', 
-        `Transfer accepted from ${transfer.supplierName} (${transfer.id})`,
+        `Transfer accepted from ${transfer.supplierName} into ${transfer.toLocation}`,
         transfer.toLocation
       );
     }
@@ -345,7 +383,7 @@ export const storageService = {
         date: new Date().toISOString(), 
         quantity: 0, 
         type: 'TRANSFER_IN' as any, 
-        notes: `Delivery finalized to ${location}` 
+        notes: `Location shifted to ${location}` 
       }, ...part.history || []].slice(0, 50)
     };
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
@@ -357,7 +395,7 @@ export const storageService = {
     if (part.currentStock <= LOW_STOCK_THRESHOLD) {
       const existing = storageService.getNotifications().find(n => n.partId === part.id && !n.read);
       if (!existing) {
-        storageService.addNotification({ partId: part.id, partName: part.name, message: `ALARM: ${part.name} low stock (${part.currentStock} units).`, type: 'WARNING' });
+        storageService.addNotification({ partId: part.id, partName: part.name, message: `WARNING: ${part.name} below threshold (${part.currentStock}).`, type: 'WARNING' });
       }
     }
   },
