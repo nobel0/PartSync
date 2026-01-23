@@ -215,7 +215,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         if (hasImage) {
           row.height = 80;
           // Center align content vertically
-          row.eachCell((cell) => {
+          row.eachCell((cell: any) => {
             cell.alignment = { vertical: 'middle', horizontal: 'left' };
           });
         }
