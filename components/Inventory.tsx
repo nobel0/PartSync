@@ -21,22 +21,25 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
   const filteredParts = useMemo(() => {
     let result = parts;
     
-    // Apply Shop Filter
+    // 1. Apply Shop Filter
     if (filterShop !== 'ALL') {
       result = result.filter(p => p.manufacturingShop === filterShop);
     }
     
-    // Apply Global Search across ALL keys
+    // 2. Apply Omni-Search (Case Insensitive scan of all properties)
     if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
+      const term = searchTerm.toLowerCase().trim();
       result = result.filter(p => {
-        // Scan every value in the object for the term
+        // We iterate over the values of the part object
         return Object.entries(p).some(([key, value]) => {
-          // Skip internal complex objects like history array or images
-          if (key === 'history' || key === 'imageUrl' || value === null || value === undefined) return false;
+          // Skip non-searchable fields
+          if (['history', 'imageUrl', 'updatedAt'].includes(key)) return false;
           
-          const strValue = value.toString().toLowerCase();
-          return strValue.includes(term);
+          if (value !== null && value !== undefined) {
+            const strVal = value.toString().toLowerCase();
+            return strVal.includes(term);
+          }
+          return false;
         });
       });
     }
@@ -62,7 +65,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
            <div className="text-slate-400"><ICONS.Search /></div>
            <input 
               type="text" 
-              placeholder="Omni-Search (e.g. P700, Chassis, Rear Axle...)" 
+              placeholder="Search anything (PN, Model, Shop, Name, etc.)..." 
               className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -133,7 +136,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
                 <ICONS.Search />
              </div>
-             <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No matching assets found in registry</p>
+             <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No matching results for "{searchTerm}"</p>
           </div>
         )}
       </div>
