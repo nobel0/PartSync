@@ -1,5 +1,4 @@
 
-
 export interface User {
   id: string;
   username: string;
@@ -19,7 +18,6 @@ export interface ColumnDefinition {
 
 export type PartLocation = 'SUPPLIER' | 'WAREHOUSE' | 'BODY_SHOP' | 'FE' | 'RF' | 'FF' | 'UB' | 'SF';
 
-// Add missing Supplier interface
 export interface Supplier {
   id: string;
   name: string;
