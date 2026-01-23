@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppConfig, ColumnDefinition, User } from '../types';
+import { AppConfig, ColumnDefinition, User, Part } from '../types';
 import { storageService } from '../services/storageService';
 import { ICONS } from '../constants';
 // @ts-ignore
@@ -31,15 +31,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   useEffect(() => {
     const current = storageService.getDBCredentials();
     if (current) setDbCreds(current);
-  }, []);
-
-  useEffect(() => {
     setFormData({ ...config });
   }, [config]);
 
   const handleSave = () => {
     onSaveConfig(formData);
-    alert("✅ System Configuration Updated Successfully");
+    alert("✅ Facility Configuration committed successfully.");
   };
 
   const moveColumn = (index: number, direction: 'UP' | 'DOWN') => {
@@ -53,7 +50,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   const addItem = (type: 'carModels' | 'manufacturingShops') => {
     const val = type === 'carModels' ? newModelItem : newShopItem;
     if (!val.trim()) return;
-    if (formData[type].includes(val.trim())) return alert("Item already exists.");
+    if (formData[type].includes(val.trim())) return alert("Asset already registered.");
     setFormData(prev => ({ ...prev, [type]: [...prev[type], val.trim()] }));
     if (type === 'carModels') setNewModelItem(''); else setNewShopItem('');
   };
@@ -64,33 +61,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setFormData(prev => ({ ...prev, [type]: updated }));
   };
 
-  const startEditColumn = (col: ColumnDefinition) => {
-    setEditingColId(col.id);
-    setNewColLabel(col.label);
-    setNewColKey(col.id);
-    setNewColType(col.type);
-    setIsPrimaryCol(!!col.isPrimary);
-    // Smooth scroll to form
-    document.getElementById('schema-form')?.scrollIntoView({ behavior: 'smooth' });
+  // Fix: Added missing handleAddUser function to manage personnel enrollment
+  const handleAddUser = () => {
+    if (!newUser.username || !newUser.email || !newUser.password || !newUser.role) {
+      return alert("All fields (Identity Name, Auth Email, Passkey, Role) are required for enrollment.");
+    }
+    const user: User = {
+      id: `USER_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      username: newUser.username!,
+      email: newUser.email!,
+      password: newUser.password!,
+      role: newUser.role as any,
+      assignedLine: newUser.assignedLine || 'ALL'
+    };
+    setFormData(prev => ({ ...prev, users: [...prev.users, user] }));
+    setNewUser({ role: 'INTERNAL_LOGISTIC', assignedLine: 'ALL', username: '', email: '', password: '' });
   };
 
   const addOrUpdateColumn = () => {
     if (!newColLabel.trim() || !newColKey.trim()) return;
     const finalKey = newColKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    
-    let updatedColumns = [...formData.columns];
-
-    // If making this primary, unset others
-    if (isPrimaryCol) {
-      updatedColumns = updatedColumns.map(c => ({ ...c, isPrimary: false }));
-    }
+    let updatedColumns = isPrimaryCol ? formData.columns.map(c => ({ ...c, isPrimary: false })) : [...formData.columns];
 
     if (editingColId) {
       updatedColumns = updatedColumns.map(col => 
         col.id === editingColId ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary: isPrimaryCol } : col
       );
     } else {
-      if (formData.columns.some(c => c.id === finalKey)) return alert("Field ID collision detected.");
+      if (formData.columns.some(c => c.id === finalKey)) return alert("Schema ID conflict.");
       updatedColumns.push({ id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary: isPrimaryCol });
     }
     
@@ -99,45 +97,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimaryCol(false);
   };
 
-  const handleAddUser = () => {
-    if (!newUser.username || !newUser.email || !newUser.password) return alert("Fill all fields.");
-    const userToAdd: User = {
-      id: `USR_${Date.now()}`,
-      username: newUser.username,
-      email: newUser.email,
-      password: newUser.password,
-      role: newUser.role as any,
-      assignedLine: newUser.assignedLine || 'ALL'
-    };
-    setFormData({ ...formData, users: [...formData.users, userToAdd] });
-    setNewUser({ role: 'INTERNAL_LOGISTIC', assignedLine: 'ALL' });
-  };
-
   const handleExportExcel = () => {
-    try {
-      const parts = storageService.getParts();
-      const worksheet = (window as any).XLSX.utils.json_to_sheet(parts);
-      const workbook = (window as any).XLSX.utils.book_new();
-      (window as any).XLSX.utils.book_append_sheet(workbook, worksheet, "Parts Registry");
-      (window as any).XLSX.writeFile(workbook, `PartFlow_Master_${new Date().toISOString().split('T')[0]}.xlsx`);
-    } catch (e) {
-      alert("Export failed: " + e);
-    }
+    const parts = storageService.getParts();
+    const worksheet = (window as any).XLSX.utils.json_to_sheet(parts);
+    const workbook = (window as any).XLSX.utils.book_new();
+    (window as any).XLSX.utils.book_append_sheet(workbook, worksheet, "Asset_Registry");
+    (window as any).XLSX.writeFile(workbook, `PartFlow_Registry_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (window.confirm("This will overwrite your current facility data with the backup file. Proceed?")) {
-        const success = await storageService.importBackup(file);
-        if (success) {
-          alert("Backup restored successfully.");
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = (window as any).XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = (window as any).XLSX.utils.sheet_to_json(ws);
+        if (data.length > 0) {
+          await storageService.saveParts(data as Part[]);
           onDataRefresh();
-        } else {
-          alert("Restore failed. Check the file format.");
+          alert(`Successfully imported ${data.length} assets.`);
         }
-      }
-    }
+      } catch (err) { alert("XLSX Parsing Error: " + err); }
+    };
+    reader.readAsBinaryString(file);
   };
 
   const TabButton: React.FC<{ id: typeof activeTab; label: string }> = ({ id, label }) => (
@@ -154,12 +140,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
       <div className="flex items-center justify-between bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
         <div>
           <h3 className="text-3xl font-black text-slate-900">System Architect</h3>
-          <p className="text-slate-500 text-xs mt-1 uppercase tracking-widest font-bold">Facility Config & Personnel Control</p>
+          <p className="text-slate-500 text-xs mt-1 uppercase tracking-widest font-bold">Facility Config & Operations Control</p>
         </div>
-        <div className="flex gap-4">
-          <button onClick={onDataRefresh} className="bg-white border-2 border-slate-200 text-slate-600 px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50">Refresh Data</button>
-          <button onClick={handleSave} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black shadow-xl hover:scale-105 transition-all text-[10px] uppercase tracking-widest">Save System Config</button>
-        </div>
+        <button onClick={handleSave} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black shadow-xl hover:scale-105 transition-all text-[10px] uppercase tracking-widest">Commit Changes</button>
       </div>
 
       <div className="flex gap-1 border-b border-slate-200 overflow-x-auto scrollbar-hide">
@@ -167,8 +150,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         <TabButton id="REGISTRY" label="Taxonomy" />
         <TabButton id="COLUMNS" label="Schema" />
         <TabButton id="PERSONNEL" label="Personnel" />
-        <TabButton id="CLOUD" label="Cloud Mesh" />
-        <TabButton id="DATA" label="Operations" />
+        <TabButton id="CLOUD" label="Mesh Link" />
+        <TabButton id="DATA" label="Data Lab" />
       </div>
 
       <div className="bg-white rounded-[32px] border border-slate-200 shadow-xl p-8 lg:p-12 min-h-[500px]">
@@ -177,11 +160,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
               <div className="space-y-6">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Platform Branding Name</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Platform Name</label>
                   <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.appName} onChange={e => setFormData({ ...formData, appName: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Brand Accent Color</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Brand Accent</label>
                   <input type="color" className="h-14 w-20 rounded-2xl cursor-pointer bg-white p-1 border border-slate-200 shadow-sm" value={formData.primaryColor} onChange={e => setFormData({ ...formData, primaryColor: e.target.value })} />
                 </div>
               </div>
@@ -200,7 +183,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     }
                   }} />
                 </label>
-                <p className="mt-4 text-[9px] text-slate-400 font-bold uppercase">SVG, PNG or JPG (Max 2MB)</p>
               </div>
             </div>
           </div>
@@ -211,7 +193,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
             <div className="space-y-6">
               <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Fleet Models</h4>
               <div className="flex gap-2">
-                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="New Model..." value={newModelItem} onChange={e => setNewModelItem(e.target.value)} />
+                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Asset Identifier..." value={newModelItem} onChange={e => setNewModelItem(e.target.value)} />
                 <button onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-[10px] uppercase tracking-widest">Add</button>
               </div>
               <div className="space-y-2">
@@ -224,9 +206,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
               </div>
             </div>
             <div className="space-y-6">
-              <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Manufacturing Shops</h4>
+              <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Manufacturing Zones</h4>
               <div className="flex gap-2">
-                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="New Shop..." value={newShopItem} onChange={e => setNewShopItem(e.target.value)} />
+                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Zone Identifier..." value={newShopItem} onChange={e => setNewShopItem(e.target.value)} />
                 <button onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-[10px] uppercase tracking-widest">Add</button>
               </div>
               <div className="space-y-2">
@@ -263,17 +245,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 </div>
                 <div className="flex items-center gap-2 h-12 pb-1">
                   <input type="checkbox" id="isPrimary" checked={isPrimaryCol} onChange={e => setIsPrimaryCol(e.target.checked)} className="w-4 h-4" />
-                  <label htmlFor="isPrimary" className="text-[10px] font-black uppercase tracking-widest">Primary Identity</label>
+                  <label htmlFor="isPrimary" className="text-[10px] font-black uppercase tracking-widest">Primary ID</label>
                 </div>
                 <button onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-colors">
-                  {editingColId ? 'Apply Edit' : 'Add Column'}
+                  {editingColId ? 'Save Edit' : 'Add Column'}
                 </button>
               </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {formData.columns.map((col, idx) => (
-                <div key={col.id} className="p-6 rounded-[24px] border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between group">
+                <div key={col.id} className="p-6 rounded-[24px] border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
                   <div>
                     <div className="flex justify-between items-start">
                       <div className="flex gap-1">
@@ -289,7 +271,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     <p className="text-[9px] font-mono text-slate-400">{col.id}</p>
                   </div>
                   <div className="mt-6 flex gap-2">
-                    <button onClick={() => startEditColumn(col)} className="flex-1 py-2 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black hover:bg-slate-900 hover:text-white transition-all uppercase tracking-widest">Edit</button>
+                    <button onClick={() => { setEditingColId(col.id); setNewColLabel(col.label); setNewColKey(col.id); setNewColType(col.type); setIsPrimaryCol(!!col.isPrimary); }} className="flex-1 py-2 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black hover:bg-slate-900 hover:text-white transition-all uppercase tracking-widest">Edit</button>
                     {!col.isCore && <button onClick={() => setFormData({...formData, columns: formData.columns.filter(c => c.id !== col.id)})} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-[9px] font-black hover:bg-red-600 hover:text-white transition-all uppercase tracking-widest">Delete</button>}
                   </div>
                 </div>
@@ -303,21 +285,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
             <div className="bg-slate-900 p-8 rounded-[32px] text-white space-y-6 shadow-2xl">
               <h4 className="text-lg font-black uppercase tracking-tight">Personnel Enrollment</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <input className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Full Name" value={newUser.username || ''} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
+                <input className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Identity Name" value={newUser.username || ''} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
                 <input className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Auth Email" value={newUser.email || ''} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
                 <input type="password" className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Access Passkey" value={newUser.password || ''} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
                 <select className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold text-white" value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value as any })}>
                   <option value="INTERNAL_LOGISTIC" className="text-slate-900">Internal Logistic (Warehouse)</option>
-                  <option value="ENGINEER" className="text-slate-900">Engineer (Shop Floor)</option>
-                  <option value="ADMIN" className="text-slate-900">Facility Admin</option>
-                  <option value="SUPPLIER" className="text-slate-900">External Supplier</option>
+                  <option value="ENGINEER" className="text-slate-900">Engineer (Line Release)</option>
+                  <option value="ADMIN" className="text-slate-900">System Administrator</option>
+                  <option value="SUPPLIER" className="text-slate-900">External Vendor</option>
                 </select>
                 <div className="col-span-full md:col-span-2 flex gap-4">
                   <select className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold text-white" value={newUser.assignedLine} onChange={e => setNewUser({ ...newUser, assignedLine: e.target.value })}>
-                    <option value="ALL" className="text-slate-900">Global Access (Full Plant)</option>
+                    <option value="ALL" className="text-slate-900">Global Facility Access</option>
                     {formData.manufacturingShops.map(s => <option key={s} value={s} className="text-slate-900">{s}</option>)}
                   </select>
-                  <button onClick={handleAddUser} className="px-8 bg-blue-600 hover:bg-blue-500 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-colors">Register Personnel</button>
+                  <button onClick={handleAddUser} className="px-8 bg-blue-600 hover:bg-blue-500 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-colors">Enroll User</button>
                 </div>
               </div>
             </div>
@@ -328,12 +310,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   <div>
                     <div className="flex items-center justify-between">
                       <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${u.role === 'ADMIN' ? 'bg-red-100 text-red-600' : u.role === 'ENGINEER' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>{u.role.replace('_', ' ')}</span>
-                      {u.id !== 'admin_01' && <button onClick={() => setFormData({...formData, users: formData.users.filter(x => x.id !== u.id)})} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">✕</button>}
+                      {u.id !== 'admin_01' && <button onClick={() => setFormData({...formData, users: formData.users.filter(x => x.id !== u.id)})} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>}
                     </div>
                     <h5 className="font-black text-slate-900 mt-2">{u.username}</h5>
                     <p className="text-[10px] text-slate-400 font-medium">{u.email}</p>
                     <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">{u.assignedLine === 'ALL' ? 'Full Plant Access' : `Assigned: ${u.assignedLine}`}</span>
+                      <span className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">{u.assignedLine === 'ALL' ? 'Global Command' : `Area: ${u.assignedLine}`}</span>
                     </div>
                   </div>
                 </div>
@@ -346,31 +328,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mesh Database Credentials</h4>
-              <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Upstash REST URL (https://...)" value={dbCreds.url} onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} />
-              <input type="password" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Database Access Token" value={dbCreds.token} onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} />
-              <button onClick={() => { storageService.setDBCredentials(dbCreds); alert("Cloud Mesh Linked."); }} className="w-full py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs shadow-lg uppercase tracking-widest hover:bg-black transition-all">Connect Global Registry</button>
-              
-              <div className="pt-6 space-y-4">
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Synchronization</h4>
-                 <div className="grid grid-cols-2 gap-4">
-                    <button onClick={async () => { await storageService.pushToCloud(); alert("Registry Mesh Committed."); }} className="py-4 bg-emerald-600 text-white rounded-[20px] font-black text-[10px] uppercase tracking-widest shadow-lg">Manual Push (Save)</button>
-                    <button onClick={async () => { await storageService.syncWithCloud(true); onDataRefresh(); alert("Facility Registry Restored."); }} className="py-4 bg-blue-600 text-white rounded-[20px] font-black text-[10px] uppercase tracking-widest shadow-lg">Cloud Recovery (Pull)</button>
-                 </div>
-              </div>
-
-              <div className="pt-6 space-y-4">
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Backup & Restore (JSON)</h4>
-                 <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => storageService.exportBackup()} className="py-4 bg-slate-100 text-slate-900 rounded-[20px] font-black text-[10px] uppercase tracking-widest border border-slate-200 shadow-sm">Export JSON Backup</button>
-                    <label className="py-4 bg-slate-100 text-slate-900 rounded-[20px] font-black text-[10px] text-center uppercase tracking-widest border border-slate-200 shadow-sm cursor-pointer">
-                       Import JSON Backup
-                       <input type="file" accept=".json" className="hidden" onChange={handleImportBackup} />
-                    </label>
-                 </div>
-              </div>
+              <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="REST Endpoint (Upstash URL)" value={dbCreds.url} onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} />
+              <input type="password" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Access Token" value={dbCreds.token} onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} />
+              <button onClick={() => { storageService.setDBCredentials(dbCreds); alert("Cloud Mesh Linked."); }} className="w-full py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs shadow-lg uppercase tracking-widest hover:bg-black transition-all">Connect Facility Mesh</button>
             </div>
             
-            <div className="bg-slate-900 rounded-[32px] p-8 text-white flex flex-col h-[500px]">
+            <div className="bg-slate-900 rounded-[32px] p-8 text-white h-[400px] flex flex-col">
                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Synchronization Logs</h4>
                <div className="flex-1 overflow-y-auto scrollbar-hide space-y-4 text-[10px] font-mono">
                   {storageService.getSessionLogs().map((log, i) => (
@@ -378,45 +341,66 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                        <span className="opacity-50">[{new Date(log.timestamp).toLocaleTimeString()}]</span> {log.type}: {log.message}
                     </div>
                   ))}
-                  {storageService.getSessionLogs().length === 0 && <p className="text-slate-600 italic">No sync events logged in current session.</p>}
+                  {storageService.getSessionLogs().length === 0 && <p className="text-slate-600 italic">No sync events logged.</p>}
                </div>
             </div>
           </div>
         )}
 
         {activeTab === 'DATA' && (
-           <div className="space-y-12">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                 <div className="bg-emerald-900 p-10 rounded-[40px] text-white space-y-6 shadow-xl relative overflow-hidden flex flex-col justify-between h-[300px]">
-                    <div className="absolute top-0 right-0 p-4 opacity-10"><ICONS.Inventory /></div>
-                    <div>
-                      <h4 className="text-xl font-black">Master Export</h4>
-                      <p className="text-xs text-emerald-200 opacity-80 mt-2">Generate full industrial asset registry snapshot in Excel format for auditing.</p>
-                    </div>
-                    <button onClick={handleExportExcel} className="w-full py-5 bg-white text-emerald-900 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] transition-transform shadow-xl">Download Global Registry (.xlsx)</button>
-                 </div>
+          <div className="space-y-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {/* Excel Block */}
+              <div className="bg-emerald-900 p-10 rounded-[40px] text-white space-y-8 shadow-xl relative overflow-hidden flex flex-col justify-between h-[340px]">
+                <div className="absolute top-0 right-0 p-4 opacity-10 scale-150"><ICONS.Inventory /></div>
+                <div>
+                  <h4 className="text-2xl font-black">Excel Studio</h4>
+                  <p className="text-xs text-emerald-200 opacity-80 mt-2 uppercase tracking-widest font-bold">XLSX Export & Bulk Intake</p>
+                </div>
+                <div className="space-y-4">
+                  <button onClick={handleExportExcel} className="w-full py-4 bg-white text-emerald-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-105 transition-transform">Download Master XLSX</button>
+                  <label className="w-full py-4 bg-emerald-800 text-white border border-emerald-700 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer hover:bg-emerald-700 transition-colors block">
+                    Bulk XLSX Import
+                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
+                  </label>
+                </div>
+              </div>
 
-                 <div className="bg-slate-100 p-10 rounded-[40px] border border-slate-200 space-y-6 h-[300px] flex flex-col justify-between">
-                    <div>
-                      <h4 className="text-xl font-black text-slate-900">Legacy Restoration</h4>
-                      <p className="text-xs text-slate-500 mt-2">Download a full JSON state backup to local drive for emergency recovery.</p>
-                    </div>
-                    <button onClick={() => storageService.exportBackup()} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-black">Generate JSON Image</button>
-                 </div>
+              {/* JSON Backup Block */}
+              <div className="bg-slate-100 p-10 rounded-[40px] border border-slate-200 space-y-8 h-[340px] flex flex-col justify-between">
+                <div>
+                  <h4 className="text-2xl font-black text-slate-900">System Image</h4>
+                  <p className="text-xs text-slate-500 mt-2 uppercase tracking-widest font-bold">JSON Full State Migration</p>
+                </div>
+                <div className="space-y-4">
+                  <button onClick={() => storageService.exportBackup()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-black transition-all">Export JSON Backup</button>
+                  <label className="w-full py-4 bg-white text-slate-900 border-2 border-slate-200 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer hover:bg-slate-50 block shadow-sm">
+                    Restore from JSON
+                    <input type="file" accept=".json" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file && window.confirm("Override current facility state with this backup?")) {
+                        await storageService.importBackup(file);
+                        onDataRefresh();
+                        alert("Facility State Restored.");
+                      }
+                    }} />
+                  </label>
+                </div>
+              </div>
 
-                 <div className="bg-blue-900 p-10 rounded-[40px] text-white space-y-6 shadow-xl relative overflow-hidden flex flex-col justify-between h-[300px]">
-                    <div className="absolute top-0 right-0 p-4 opacity-10"><ICONS.Suppliers /></div>
-                    <div>
-                      <h4 className="text-xl font-black">Import Payload</h4>
-                      <p className="text-xs text-blue-200 opacity-80 mt-2">Upload a previously exported JSON backup to restore the complete facility state.</p>
-                    </div>
-                    <label className="w-full py-5 bg-white text-blue-900 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer shadow-xl hover:scale-[1.02] transition-transform">
-                       Restore from JSON
-                       <input type="file" accept=".json" className="hidden" onChange={handleImportBackup} />
-                    </label>
+              {/* Maintenance Block */}
+              <div className="bg-blue-900 p-10 rounded-[40px] text-white space-y-8 h-[340px] flex flex-col justify-between shadow-xl">
+                 <div>
+                   <h4 className="text-2xl font-black">Cloud Mesh</h4>
+                   <p className="text-xs text-blue-200 opacity-80 mt-2 uppercase tracking-widest font-bold">Registry Mesh Operations</p>
+                 </div>
+                 <div className="space-y-4">
+                    <button onClick={async () => { await storageService.pushToCloud(); alert("Registry mesh committed."); }} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl">Push to Cloud Mesh</button>
+                    <button onClick={async () => { await storageService.syncWithCloud(true); onDataRefresh(); alert("Facility Registry Restored."); }} className="w-full py-4 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl font-black text-[10px] uppercase tracking-widest">Pull from Cloud Mesh</button>
                  </div>
               </div>
-           </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

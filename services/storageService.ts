@@ -19,7 +19,7 @@ interface DBCredentials {
 
 interface CloudLog {
   timestamp: number;
-  type: 'PUSH' | 'PULL' | 'TEST' | 'ERROR' | 'BACKUP' | 'RESTORE';
+  type: 'PUSH' | 'PULL' | 'TEST' | 'ERROR' | 'BACKUP' | 'RESTORE' | 'IMPORT';
   status: 'SUCCESS' | 'ERROR';
   message: string;
 }
@@ -28,7 +28,7 @@ const syncChannel = new BroadcastChannel('partflow_mesh_sync');
 let sessionLogs: CloudLog[] = [];
 let hasPerformedInitialPull = false;
 
-const isValid = (val: any) => val && typeof val === 'string' && val !== 'undefined' && val !== 'null' && val.trim().length > 5;
+const isValid = (val: any) => val && typeof val === 'string' && val.trim().length > 5;
 
 export const storageService = {
   getDBCredentials: (): DBCredentials | null => {
@@ -84,8 +84,7 @@ export const storageService = {
       if (!data.result) {
         const localParts = storageService.getParts();
         if (localParts.length > 0) {
-          const pushed = await storageService.pushToCloud();
-          return { success: pushed, mode: 'CLOUD' };
+          await storageService.pushToCloud();
         }
         return { success: true, mode: 'CLOUD' };
       }
@@ -99,7 +98,7 @@ export const storageService = {
         if (remoteState.config) localStorage.setItem(CONFIG_KEY, JSON.stringify(remoteState.config));
         localStorage.setItem(LAST_SYNC_KEY, remoteUpdatedAt.toString());
         storageService.notifySync();
-        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: force ? 'Cloud Recovery Merged.' : 'Registry Sync Complete.' });
+        sessionLogs.unshift({ timestamp: Date.now(), type: 'PULL', status: 'SUCCESS', message: 'Registry Cloud Sync Complete.' });
       }
       return { success: true, mode: 'CLOUD' };
     } catch (e) { 
@@ -111,10 +110,6 @@ export const storageService = {
   pushToCloud: async (): Promise<boolean> => {
     const creds = storageService.getDBCredentials();
     if (!creds) return false;
-    if (!hasPerformedInitialPull) {
-      await storageService.syncWithCloud();
-      if (!hasPerformedInitialPull) return false;
-    }
     try {
       const timestamp = Date.now();
       const payload = {
@@ -124,15 +119,14 @@ export const storageService = {
         config: storageService.getConfig(),
         lastPushAt: timestamp
       };
-      const serialized = JSON.stringify(payload);
       const response = await fetch(`${creds.url}/`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(["SET", MASTER_DB_KEY, serialized])
+        body: JSON.stringify(["SET", MASTER_DB_KEY, JSON.stringify(payload)])
       });
       if (response.ok) {
         localStorage.setItem(LAST_SYNC_KEY, timestamp.toString());
-        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry committed to cloud.' });
+        sessionLogs.unshift({ timestamp, type: 'PUSH', status: 'SUCCESS', message: 'Registry mesh committed.' });
         return true;
       }
       return false;
@@ -151,9 +145,9 @@ export const storageService = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `partflow_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `partflow_system_image_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
-    sessionLogs.unshift({ timestamp: Date.now(), type: 'BACKUP', status: 'SUCCESS', message: 'Local JSON backup generated.' });
+    sessionLogs.unshift({ timestamp: Date.now(), type: 'BACKUP', status: 'SUCCESS', message: 'Full system JSON image generated.' });
   },
 
   importBackup: async (file: File) => {
@@ -169,10 +163,10 @@ export const storageService = {
           localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
           storageService.notifySync();
           await storageService.pushToCloud();
-          sessionLogs.unshift({ timestamp: Date.now(), type: 'RESTORE', status: 'SUCCESS', message: 'Local JSON backup restored and synced.' });
+          sessionLogs.unshift({ timestamp: Date.now(), type: 'RESTORE', status: 'SUCCESS', message: 'System image restored and synced.' });
           resolve(true);
         } catch (err) {
-          sessionLogs.unshift({ timestamp: Date.now(), type: 'RESTORE', status: 'ERROR', message: 'Invalid backup file.' });
+          sessionLogs.unshift({ timestamp: Date.now(), type: 'RESTORE', status: 'ERROR', message: 'Invalid image file.' });
           resolve(false);
         }
       };
@@ -237,9 +231,7 @@ export const storageService = {
     if (!stored) return defaultConf;
     try { 
       const parsed = JSON.parse(stored);
-      parsed.labels = { ...defaultConf.labels, ...(parsed.labels || {}) };
-      parsed.users = parsed.users || defaultConf.users;
-      return parsed;
+      return { ...defaultConf, ...parsed, labels: { ...defaultConf.labels, ...(parsed.labels || {}) } };
     } catch (e) { return defaultConf; }
   },
 
@@ -262,20 +254,16 @@ export const storageService = {
 
   saveParts: async (newParts: Part[]) => {
     const parts = storageService.getParts();
-    const user = storageService.getCurrentUser();
     const timestamp = Date.now();
-    const userHandle = user?.username || 'System';
-    newParts.forEach(newPart => {
-      const updatedPart = { 
-        ...newPart, 
-        id: newPart.id || `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        updatedAt: timestamp, 
-        lastModifiedBy: userHandle 
-      };
-      const idx = parts.findIndex(p => p.id === updatedPart.id);
-      if (idx >= 0) parts[idx] = updatedPart; else parts.push(updatedPart);
-      storageService.checkLowStock(updatedPart);
+    const user = storageService.getCurrentUser()?.username || 'Import';
+    
+    newParts.forEach(np => {
+      const part = { ...np, updatedAt: timestamp, lastModifiedBy: user };
+      const idx = parts.findIndex(p => p.id === part.id || (p.partNumber === part.partNumber && part.partNumber !== ''));
+      if (idx >= 0) parts[idx] = { ...parts[idx], ...part };
+      else parts.push({ ...part, id: part.id || `PART_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` });
     });
+    
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
     storageService.notifySync();
     return await storageService.pushToCloud();
@@ -314,27 +302,16 @@ export const storageService = {
     const transfers = storageService.getTransfers();
     const idx = transfers.findIndex(t => t.id === id);
     if (idx === -1) return;
-    
     const user = storageService.getCurrentUser();
     const transfer = transfers[idx];
-    
     if (transfer.status !== 'PENDING') return;
-
     transfer.status = 'COMPLETED';
     transfer.engineerId = user?.id || 'System';
     transfer.engineerName = user?.username || 'System';
     transfer.engineerSignature = `SIG_LOG_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-    
     for (const tp of transfer.parts) {
-      await storageService.updateStock(
-        tp.partId, 
-        tp.quantity, 
-        'RECEIVE', 
-        `Transfer accepted from ${transfer.supplierName} into ${transfer.toLocation}`,
-        transfer.toLocation
-      );
+      await storageService.updateStock(tp.partId, tp.quantity, 'RECEIVE', `Accepted from ${transfer.supplierName}`, transfer.toLocation);
     }
-
     localStorage.setItem(TRANSFERS_KEY, JSON.stringify(transfers));
     storageService.notifySync();
     return await storageService.pushToCloud();
@@ -344,7 +321,6 @@ export const storageService = {
     const parts = storageService.getParts();
     const idx = parts.findIndex(p => p.id === partId);
     if (idx === -1) return;
-    const user = storageService.getCurrentUser();
     const part = parts[idx];
     const newStock = type === 'RECEIVE' ? part.currentStock + quantity : part.currentStock - quantity;
     parts[idx] = {
@@ -352,7 +328,7 @@ export const storageService = {
       currentStock: Math.max(0, newStock),
       currentLocation: newLocation || part.currentLocation,
       updatedAt: Date.now(),
-      lastModifiedBy: user?.username || 'System',
+      lastModifiedBy: storageService.getCurrentUser()?.username || 'System',
       history: [{ 
         id: Math.random().toString(36).substr(2, 9), 
         date: new Date().toISOString(), 
@@ -371,19 +347,18 @@ export const storageService = {
     const parts = storageService.getParts();
     const idx = parts.findIndex(p => p.id === partId);
     if (idx === -1) return;
-    const user = storageService.getCurrentUser();
     const part = parts[idx];
     parts[idx] = {
       ...part,
       currentLocation: location,
       updatedAt: Date.now(),
-      lastModifiedBy: user?.username || 'System',
+      lastModifiedBy: storageService.getCurrentUser()?.username || 'System',
       history: [{ 
         id: Math.random().toString(36).substr(2, 9), 
         date: new Date().toISOString(), 
         quantity: 0, 
         type: 'TRANSFER_IN' as any, 
-        notes: `Location shifted to ${location}` 
+        notes: `Physical relocation to ${location}` 
       }, ...part.history || []].slice(0, 50)
     };
     localStorage.setItem(PARTS_KEY, JSON.stringify(parts));
@@ -395,7 +370,7 @@ export const storageService = {
     if (part.currentStock <= LOW_STOCK_THRESHOLD) {
       const existing = storageService.getNotifications().find(n => n.partId === part.id && !n.read);
       if (!existing) {
-        storageService.addNotification({ partId: part.id, partName: part.name, message: `WARNING: ${part.name} below threshold (${part.currentStock}).`, type: 'WARNING' });
+        storageService.addNotification({ partId: part.id, partName: part.name, message: `WARNING: ${part.name} critical stock level reached (${part.currentStock}).`, type: 'WARNING' });
       }
     }
   },
