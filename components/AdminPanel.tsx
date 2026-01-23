@@ -14,7 +14,7 @@ interface AdminPanelProps {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRefresh }) => {
   const [formData, setFormData] = useState<AppConfig>({ ...config });
-  const [activeTab, setActiveTab] = useState<'VISUALS' | 'REGISTRY' | 'COLUMNS' | 'PERSONNEL' | 'CLOUD' | 'DATA'>('VISUALS');
+  const [activeTab, setActiveTab] = useState<'VISUALS' | 'REGISTRY' | 'COLUMNS' | 'PERSONNEL' | 'CLOUD' | 'DATA'>('DATA');
   
   const [newModelItem, setNewModelItem] = useState('');
   const [newShopItem, setNewShopItem] = useState('');
@@ -61,7 +61,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     setFormData(prev => ({ ...prev, [type]: updated }));
   };
 
-  // Fix: Added missing handleAddUser function to manage personnel enrollment
   const handleAddUser = () => {
     if (!newUser.username || !newUser.email || !newUser.password || !newUser.role) {
       return alert("All fields (Identity Name, Auth Email, Passkey, Role) are required for enrollment.");
@@ -76,25 +75,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     };
     setFormData(prev => ({ ...prev, users: [...prev.users, user] }));
     setNewUser({ role: 'INTERNAL_LOGISTIC', assignedLine: 'ALL', username: '', email: '', password: '' });
-  };
-
-  const addOrUpdateColumn = () => {
-    if (!newColLabel.trim() || !newColKey.trim()) return;
-    const finalKey = newColKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    let updatedColumns = isPrimaryCol ? formData.columns.map(c => ({ ...c, isPrimary: false })) : [...formData.columns];
-
-    if (editingColId) {
-      updatedColumns = updatedColumns.map(col => 
-        col.id === editingColId ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary: isPrimaryCol } : col
-      );
-    } else {
-      if (formData.columns.some(c => c.id === finalKey)) return alert("Schema ID conflict.");
-      updatedColumns.push({ id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary: isPrimaryCol });
-    }
-    
-    setFormData({ ...formData, columns: updatedColumns });
-    setEditingColId(null);
-    setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimaryCol(false);
   };
 
   const handleExportExcel = () => {
@@ -117,13 +97,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         const ws = wb.Sheets[wsname];
         const data = (window as any).XLSX.utils.sheet_to_json(ws);
         if (data.length > 0) {
-          await storageService.saveParts(data as Part[]);
-          onDataRefresh();
-          alert(`Successfully imported ${data.length} assets.`);
+          if (confirm(`Detected ${data.length} assets in file. Import into current registry?`)) {
+            await storageService.saveParts(data as Part[]);
+            onDataRefresh();
+            alert(`✅ Successfully imported ${data.length} assets.`);
+          }
+        } else {
+          alert("Selected file appears to be empty.");
         }
       } catch (err) { alert("XLSX Parsing Error: " + err); }
     };
     reader.readAsBinaryString(file);
+  };
+
+  const addOrUpdateColumn = () => {
+    if (!newColLabel.trim() || !newColKey.trim()) return;
+    const finalKey = newColKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    let updatedColumns = isPrimaryCol ? formData.columns.map(c => ({ ...c, isPrimary: false })) : [...formData.columns];
+
+    if (editingColId) {
+      updatedColumns = updatedColumns.map(col => 
+        col.id === editingColId ? { ...col, id: finalKey, label: newColLabel.trim(), type: newColType, isPrimary: isPrimaryCol } : col
+      );
+    } else {
+      if (formData.columns.some(c => c.id === finalKey)) return alert("Schema ID conflict.");
+      updatedColumns.push({ id: finalKey, label: newColLabel.trim(), type: newColType, isCore: false, isPrimary: isPrimaryCol });
+    }
+    
+    setFormData({ ...formData, columns: updatedColumns });
+    setEditingColId(null);
+    setNewColLabel(''); setNewColKey(''); setNewColType('text'); setIsPrimaryCol(false);
   };
 
   const TabButton: React.FC<{ id: typeof activeTab; label: string }> = ({ id, label }) => (
@@ -142,29 +145,99 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
           <h3 className="text-3xl font-black text-slate-900">System Architect</h3>
           <p className="text-slate-500 text-xs mt-1 uppercase tracking-widest font-bold">Facility Config & Operations Control</p>
         </div>
-        <button onClick={handleSave} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black shadow-xl hover:scale-105 transition-all text-[10px] uppercase tracking-widest">Commit Changes</button>
+        <div className="flex gap-4">
+          <button onClick={onDataRefresh} className="bg-white border-2 border-slate-200 text-slate-600 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50">Refresh View</button>
+          <button onClick={handleSave} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black shadow-xl hover:scale-105 transition-all text-[10px] uppercase tracking-widest">Commit Config</button>
+        </div>
       </div>
 
       <div className="flex gap-1 border-b border-slate-200 overflow-x-auto scrollbar-hide">
+        <TabButton id="DATA" label="Data Lab" />
         <TabButton id="VISUALS" label="Appearance" />
         <TabButton id="REGISTRY" label="Taxonomy" />
         <TabButton id="COLUMNS" label="Schema" />
         <TabButton id="PERSONNEL" label="Personnel" />
         <TabButton id="CLOUD" label="Mesh Link" />
-        <TabButton id="DATA" label="Data Lab" />
       </div>
 
       <div className="bg-white rounded-[32px] border border-slate-200 shadow-xl p-8 lg:p-12 min-h-[500px]">
+        {activeTab === 'DATA' && (
+          <div className="space-y-12 animate-in fade-in duration-500">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Excel Section */}
+              <div className="bg-emerald-900 p-10 rounded-[40px] text-white space-y-8 shadow-xl relative overflow-hidden flex flex-col justify-between h-[380px]">
+                <div className="absolute top-0 right-0 p-4 opacity-10 scale-150"><ICONS.Inventory /></div>
+                <div>
+                  <h4 className="text-2xl font-black">Excel Integration</h4>
+                  <p className="text-xs text-emerald-200 opacity-80 mt-2 uppercase tracking-widest font-bold">Bulk Asset Management via XLSX</p>
+                  <p className="text-[10px] text-emerald-300/60 mt-4 leading-relaxed italic">Download the current registry as a spreadsheet for offline editing, or upload a formatted file to bulk-import new parts into the facility database.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button onClick={handleExportExcel} className="flex-1 py-4 bg-white text-emerald-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export Excel
+                  </button>
+                  <label className="flex-1 py-4 bg-emerald-800 text-white border border-emerald-700 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Import Excel
+                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
+                  </label>
+                </div>
+              </div>
+
+              {/* JSON Section */}
+              <div className="bg-slate-900 p-10 rounded-[40px] text-white space-y-8 shadow-xl relative overflow-hidden flex flex-col justify-between h-[380px]">
+                <div className="absolute top-0 right-0 p-4 opacity-10 scale-150"><ICONS.Dashboard /></div>
+                <div>
+                  <h4 className="text-2xl font-black">System Backup</h4>
+                  <p className="text-xs text-slate-400 mt-2 uppercase tracking-widest font-bold">JSON Full State Migration</p>
+                  <p className="text-[10px] text-slate-500 mt-4 leading-relaxed italic">This utility generates a "System Image" — a complete snapshot of all facility data including parts, users, and app configurations. Use this for disaster recovery or migration.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button onClick={() => storageService.exportBackup()} className="flex-1 py-4 bg-slate-800 text-white border border-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-700 transition-all flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export JSON
+                  </button>
+                  <label className="flex-1 py-4 bg-white text-slate-900 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer hover:bg-slate-100 transition-colors flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Restore JSON
+                    <input type="file" accept=".json" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file && window.confirm("CRITICAL: RESTORE SYSTEM IMAGE?\nThis will overwrite all current facility data, including users and parts, with the backup file. Proceed?")) {
+                        const success = await storageService.importBackup(file);
+                        if (success) {
+                          onDataRefresh();
+                          alert("✅ System state successfully restored.");
+                        }
+                      }
+                    }} />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Mesh Info Block */}
+            <div className="bg-blue-50 border border-blue-100 p-8 rounded-[40px] flex flex-col md:flex-row items-center gap-8">
+               <div className="p-5 bg-blue-600 text-white rounded-[24px] shadow-lg"><ICONS.Truck /></div>
+               <div className="flex-1 text-center md:text-left">
+                  <h5 className="font-black text-blue-900 uppercase tracking-tight">Cloud Mesh Protocol</h5>
+                  <p className="text-xs text-blue-600 mt-1 font-medium leading-relaxed">Registry synchronization is automated across all active nodes. Manual backups (Excel/JSON) are recommended before making large structural changes to the schema or taxonomy.</p>
+               </div>
+               <button onClick={async () => { await storageService.pushToCloud(); alert("Manual sync committed."); }} className="bg-blue-900 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-black transition-all">Manual Cloud Push</button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'VISUALS' && (
-          <div className="space-y-12">
+          <div className="space-y-12 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
               <div className="space-y-6">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Platform Name</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Platform Branding Name</label>
                   <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.appName} onChange={e => setFormData({ ...formData, appName: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Brand Accent</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Global Brand Accent</label>
                   <input type="color" className="h-14 w-20 rounded-2xl cursor-pointer bg-white p-1 border border-slate-200 shadow-sm" value={formData.primaryColor} onChange={e => setFormData({ ...formData, primaryColor: e.target.value })} />
                 </div>
               </div>
@@ -189,11 +262,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         )}
 
         {activeTab === 'REGISTRY' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16 animate-in fade-in duration-500">
             <div className="space-y-6">
               <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Fleet Models</h4>
               <div className="flex gap-2">
-                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Asset Identifier..." value={newModelItem} onChange={e => setNewModelItem(e.target.value)} />
+                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="New Model Identifier..." value={newModelItem} onChange={e => setNewModelItem(e.target.value)} />
                 <button onClick={() => addItem('carModels')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-[10px] uppercase tracking-widest">Add</button>
               </div>
               <div className="space-y-2">
@@ -208,7 +281,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
             <div className="space-y-6">
               <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Manufacturing Zones</h4>
               <div className="flex gap-2">
-                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="Zone Identifier..." value={newShopItem} onChange={e => setNewShopItem(e.target.value)} />
+                <input className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="New Zone/Shop..." value={newShopItem} onChange={e => setNewShopItem(e.target.value)} />
                 <button onClick={() => addItem('manufacturingShops')} className="bg-slate-900 text-white px-6 rounded-xl font-black text-[10px] uppercase tracking-widest">Add</button>
               </div>
               <div className="space-y-2">
@@ -224,7 +297,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         )}
 
         {activeTab === 'COLUMNS' && (
-          <div className="space-y-10">
+          <div className="space-y-10 animate-in fade-in duration-500">
             <div id="schema-form" className="bg-slate-900 p-8 rounded-[32px] text-white space-y-6 shadow-2xl">
               <div className="flex flex-col md:flex-row md:items-end gap-6">
                 <div className="flex-1">
@@ -245,7 +318,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 </div>
                 <div className="flex items-center gap-2 h-12 pb-1">
                   <input type="checkbox" id="isPrimary" checked={isPrimaryCol} onChange={e => setIsPrimaryCol(e.target.checked)} className="w-4 h-4" />
-                  <label htmlFor="isPrimary" className="text-[10px] font-black uppercase tracking-widest">Primary ID</label>
+                  <label htmlFor="isPrimary" className="text-[10px] font-black uppercase tracking-widest">Identity Primary</label>
                 </div>
                 <button onClick={addOrUpdateColumn} className="px-10 py-3 bg-blue-600 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-blue-500 transition-colors">
                   {editingColId ? 'Save Edit' : 'Add Column'}
@@ -281,25 +354,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         )}
 
         {activeTab === 'PERSONNEL' && (
-          <div className="space-y-10">
+          <div className="space-y-10 animate-in fade-in duration-500">
             <div className="bg-slate-900 p-8 rounded-[32px] text-white space-y-6 shadow-2xl">
               <h4 className="text-lg font-black uppercase tracking-tight">Personnel Enrollment</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <input className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Identity Name" value={newUser.username || ''} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
-                <input className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Auth Email" value={newUser.email || ''} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
-                <input type="password" className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Access Passkey" value={newUser.password || ''} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
+                <input className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Full Identity Name" value={newUser.username || ''} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
+                <input className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Authorized Email" value={newUser.email || ''} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
+                <input type="password" className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold" placeholder="Secure Passkey" value={newUser.password || ''} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
                 <select className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold text-white" value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value as any })}>
                   <option value="INTERNAL_LOGISTIC" className="text-slate-900">Internal Logistic (Warehouse)</option>
                   <option value="ENGINEER" className="text-slate-900">Engineer (Line Release)</option>
-                  <option value="ADMIN" className="text-slate-900">System Administrator</option>
+                  <option value="ADMIN" className="text-slate-900">Facility Admin</option>
                   <option value="SUPPLIER" className="text-slate-900">External Vendor</option>
                 </select>
                 <div className="col-span-full md:col-span-2 flex gap-4">
                   <select className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-xs font-bold text-white" value={newUser.assignedLine} onChange={e => setNewUser({ ...newUser, assignedLine: e.target.value })}>
-                    <option value="ALL" className="text-slate-900">Global Facility Access</option>
+                    <option value="ALL" className="text-slate-900">Global Command Access</option>
                     {formData.manufacturingShops.map(s => <option key={s} value={s} className="text-slate-900">{s}</option>)}
                   </select>
-                  <button onClick={handleAddUser} className="px-8 bg-blue-600 hover:bg-blue-500 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-colors">Enroll User</button>
+                  <button onClick={handleAddUser} className="px-8 bg-blue-600 hover:bg-blue-500 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg transition-colors">Register Agent</button>
                 </div>
               </div>
             </div>
@@ -315,7 +388,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                     <h5 className="font-black text-slate-900 mt-2">{u.username}</h5>
                     <p className="text-[10px] text-slate-400 font-medium">{u.email}</p>
                     <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">{u.assignedLine === 'ALL' ? 'Global Command' : `Area: ${u.assignedLine}`}</span>
+                      <span className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">{u.assignedLine === 'ALL' ? 'Plant Global' : `Assigned: ${u.assignedLine}`}</span>
                     </div>
                   </div>
                 </div>
@@ -325,80 +398,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
         )}
 
         {activeTab === 'CLOUD' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 animate-in fade-in duration-500">
             <div className="space-y-6">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mesh Database Credentials</h4>
-              <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="REST Endpoint (Upstash URL)" value={dbCreds.url} onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} />
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mesh Mesh Connection Credentials</h4>
+              <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="REST Upstash Endpoint (https://...)" value={dbCreds.url} onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} />
               <input type="password" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs" placeholder="Access Token" value={dbCreds.token} onChange={e => setDbCreds({ ...dbCreds, token: e.target.value })} />
-              <button onClick={() => { storageService.setDBCredentials(dbCreds); alert("Cloud Mesh Linked."); }} className="w-full py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs shadow-lg uppercase tracking-widest hover:bg-black transition-all">Connect Facility Mesh</button>
+              <button onClick={() => { storageService.setDBCredentials(dbCreds); alert("Cloud Mesh Secured."); }} className="w-full py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs shadow-lg uppercase tracking-widest hover:bg-black transition-all">Connect Facility Registry</button>
             </div>
             
-            <div className="bg-slate-900 rounded-[32px] p-8 text-white h-[400px] flex flex-col">
-               <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Synchronization Logs</h4>
+            <div className="bg-slate-900 rounded-[32px] p-8 text-white h-[450px] flex flex-col">
+               <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Mesh Event Logs</h4>
                <div className="flex-1 overflow-y-auto scrollbar-hide space-y-4 text-[10px] font-mono">
                   {storageService.getSessionLogs().map((log, i) => (
                     <div key={i} className={`p-3 rounded-xl border ${log.status === 'SUCCESS' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-red-500/30 bg-red-500/10 text-red-400'}`}>
                        <span className="opacity-50">[{new Date(log.timestamp).toLocaleTimeString()}]</span> {log.type}: {log.message}
                     </div>
                   ))}
-                  {storageService.getSessionLogs().length === 0 && <p className="text-slate-600 italic">No sync events logged.</p>}
+                  {storageService.getSessionLogs().length === 0 && <p className="text-slate-600 italic text-center py-10">No mesh activity detected.</p>}
                </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'DATA' && (
-          <div className="space-y-12">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {/* Excel Block */}
-              <div className="bg-emerald-900 p-10 rounded-[40px] text-white space-y-8 shadow-xl relative overflow-hidden flex flex-col justify-between h-[340px]">
-                <div className="absolute top-0 right-0 p-4 opacity-10 scale-150"><ICONS.Inventory /></div>
-                <div>
-                  <h4 className="text-2xl font-black">Excel Studio</h4>
-                  <p className="text-xs text-emerald-200 opacity-80 mt-2 uppercase tracking-widest font-bold">XLSX Export & Bulk Intake</p>
-                </div>
-                <div className="space-y-4">
-                  <button onClick={handleExportExcel} className="w-full py-4 bg-white text-emerald-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-105 transition-transform">Download Master XLSX</button>
-                  <label className="w-full py-4 bg-emerald-800 text-white border border-emerald-700 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer hover:bg-emerald-700 transition-colors block">
-                    Bulk XLSX Import
-                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
-                  </label>
-                </div>
-              </div>
-
-              {/* JSON Backup Block */}
-              <div className="bg-slate-100 p-10 rounded-[40px] border border-slate-200 space-y-8 h-[340px] flex flex-col justify-between">
-                <div>
-                  <h4 className="text-2xl font-black text-slate-900">System Image</h4>
-                  <p className="text-xs text-slate-500 mt-2 uppercase tracking-widest font-bold">JSON Full State Migration</p>
-                </div>
-                <div className="space-y-4">
-                  <button onClick={() => storageService.exportBackup()} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-black transition-all">Export JSON Backup</button>
-                  <label className="w-full py-4 bg-white text-slate-900 border-2 border-slate-200 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer hover:bg-slate-50 block shadow-sm">
-                    Restore from JSON
-                    <input type="file" accept=".json" className="hidden" onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file && window.confirm("Override current facility state with this backup?")) {
-                        await storageService.importBackup(file);
-                        onDataRefresh();
-                        alert("Facility State Restored.");
-                      }
-                    }} />
-                  </label>
-                </div>
-              </div>
-
-              {/* Maintenance Block */}
-              <div className="bg-blue-900 p-10 rounded-[40px] text-white space-y-8 h-[340px] flex flex-col justify-between shadow-xl">
-                 <div>
-                   <h4 className="text-2xl font-black">Cloud Mesh</h4>
-                   <p className="text-xs text-blue-200 opacity-80 mt-2 uppercase tracking-widest font-bold">Registry Mesh Operations</p>
-                 </div>
-                 <div className="space-y-4">
-                    <button onClick={async () => { await storageService.pushToCloud(); alert("Registry mesh committed."); }} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl">Push to Cloud Mesh</button>
-                    <button onClick={async () => { await storageService.syncWithCloud(true); onDataRefresh(); alert("Facility Registry Restored."); }} className="w-full py-4 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl font-black text-[10px] uppercase tracking-widest">Pull from Cloud Mesh</button>
-                 </div>
-              </div>
             </div>
           </div>
         )}
