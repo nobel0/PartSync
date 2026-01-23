@@ -78,6 +78,11 @@ export interface Notification {
   read: boolean;
 }
 
+export interface AdminTab {
+  id: string;
+  label: string;
+}
+
 export interface AppConfig {
   appName: string;
   logoUrl?: string;
@@ -90,6 +95,7 @@ export interface AppConfig {
   columns: ColumnDefinition[];
   users: User[];
   labels: Record<string, string>;
+  adminTabs: AdminTab[]; // Added for tab customization
   updatedAt: number;
 }
 

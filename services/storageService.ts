@@ -293,12 +293,26 @@ export const storageService = {
         suppliersHeadline: "Vendor Management",
         suppliersSubline: "Supplier Performance Registry"
       },
+      adminTabs: [
+        { id: 'CLOUD', label: 'Mesh Link' },
+        { id: 'COLUMNS', label: 'Schema' },
+        { id: 'VISUALS', label: 'Appearance' },
+        { id: 'REGISTRY', label: 'Taxonomy' },
+        { id: 'PERSONNEL', label: 'Personnel' },
+        { id: 'DATA', label: 'Data Lab' }
+      ],
       updatedAt: Date.now()
     };
     if (!stored) return defaultConf;
     try { 
       const parsed = JSON.parse(stored);
-      return { ...defaultConf, ...parsed, labels: { ...defaultConf.labels, ...(parsed.labels || {}) } };
+      // Ensure adminTabs exists for migration
+      return { 
+        ...defaultConf, 
+        ...parsed, 
+        labels: { ...defaultConf.labels, ...(parsed.labels || {}) },
+        adminTabs: parsed.adminTabs || defaultConf.adminTabs 
+      };
     } catch (e) { return defaultConf; }
   },
 
