@@ -5,6 +5,10 @@ import { storageService } from '../services/storageService';
 import { ICONS } from '../constants';
 // @ts-ignore
 import * as XLSXModule from 'xlsx';
+// @ts-ignore
+import ExcelJS from 'exceljs';
+// @ts-ignore
+import saveAs from 'file-saver';
 
 interface AdminPanelProps {
   config: AppConfig;
@@ -17,6 +21,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
   const [formData, setFormData] = useState<AppConfig>({ ...config });
   const [dbCreds, setDbCreds] = useState(() => storageService.getDBCredentials() || { url: '', token: '' });
   const [activeTab, setActiveTab] = useState<string>('CLOUD');
+  const [isExporting, setIsExporting] = useState(false);
   
   // Local UI state for Schema
   const [editingColId, setEditingColId] = useState<string | null>(null);
@@ -151,11 +156,82 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
 
   // --- Excel handlers ---
 
-  const handleExport = () => {
-    const ws = (window as any).XLSX.utils.json_to_sheet(storageService.getParts());
-    const wb = (window as any).XLSX.utils.book_new();
-    (window as any).XLSX.utils.book_append_sheet(wb, ws, "Inventory");
-    (window as any).XLSX.writeFile(wb, "PartFlow_Export.xlsx");
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      // Create Workbook
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Inventory');
+
+      // Define Columns
+      worksheet.columns = formData.columns.map(col => ({
+        header: col.label,
+        key: col.id,
+        width: col.type === 'image' ? 18 : 30 // Narrower for image column, image will float
+      }));
+
+      const parts = storageService.getParts();
+
+      // Process Data
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const row = worksheet.addRow(part);
+        
+        let hasImage = false;
+
+        // Check for images
+        formData.columns.forEach((col, colIndex) => {
+          if (col.type === 'image') {
+            const cellValue = part[col.id];
+            
+            // Only process Base64 images
+            if (cellValue && typeof cellValue === 'string' && cellValue.startsWith('data:image')) {
+              try {
+                // Determine extension (png/jpeg)
+                const extension = cellValue.split(';')[0].split('/')[1] || 'png';
+                
+                const imageId = workbook.addImage({
+                  base64: cellValue,
+                  extension: extension as any,
+                });
+
+                // Add image to worksheet at specific cell
+                worksheet.addImage(imageId, {
+                  tl: { col: colIndex, row: row.number - 1 + 0.1 }, // Top-left with slight padding
+                  br: { col: colIndex + 1, row: row.number - 0.1 }  // Bottom-right
+                });
+
+                // Clear the text content so user doesn't see base64 string
+                row.getCell(col.id).value = '';
+                hasImage = true;
+              } catch (e) {
+                console.error("Failed to add image to excel", e);
+              }
+            }
+          }
+        });
+
+        // Increase row height if it contains an image
+        if (hasImage) {
+          row.height = 80;
+          // Center align content vertically
+          row.eachCell((cell) => {
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          });
+        }
+      }
+
+      // Generate Buffer and Save
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, `PartFlow_Export_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Export failed. See console.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -459,7 +535,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                   <p className="text-xs text-emerald-200 opacity-80 mt-2 uppercase tracking-widest font-bold">Bulk Asset Management</p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button onClick={handleExport} className="flex-1 py-4 bg-white text-emerald-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-105 transition-transform flex items-center justify-center gap-2">Export Registry</button>
+                  <button onClick={handleExport} disabled={isExporting} className="flex-1 py-4 bg-white text-emerald-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                    {isExporting ? 'Building Sheet...' : 'Export Registry'}
+                  </button>
                   <label className="flex-1 py-4 bg-emerald-800 text-white border border-emerald-700 rounded-2xl font-black text-[10px] text-center uppercase tracking-widest cursor-pointer hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
                     Import Registry
                     <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImport} />
