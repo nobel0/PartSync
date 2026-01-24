@@ -257,6 +257,9 @@ export const storageService = {
     const stored = localStorage.getItem(CONFIG_KEY);
     const defaultConf: AppConfig = {
       appName: "PartFlow Pro",
+      browserTitle: "PartFlow Pro | Industrial Inventory",
+      loadingHeadline: "PartFlow Protocol",
+      loadingSubline: "Syncing Facility Registry via Cloud Mesh...",
       logoUrl: "https://cdn-icons-png.flaticon.com/512/2897/2897785.png",
       primaryColor: "#0f172a",
       accentColor: "#3b82f6",
@@ -311,7 +314,10 @@ export const storageService = {
         ...defaultConf, 
         ...parsed, 
         labels: { ...defaultConf.labels, ...(parsed.labels || {}) },
-        adminTabs: parsed.adminTabs || defaultConf.adminTabs 
+        adminTabs: parsed.adminTabs || defaultConf.adminTabs,
+        browserTitle: parsed.browserTitle || defaultConf.browserTitle,
+        loadingHeadline: parsed.loadingHeadline || defaultConf.loadingHeadline,
+        loadingSubline: parsed.loadingSubline || defaultConf.loadingSubline
       };
     } catch (e) { return defaultConf; }
   },

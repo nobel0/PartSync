@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Part, Notification, ViewType, AppConfig, InventoryDisplayMode, User } from './types';
 import { storageService } from './services/storageService';
@@ -94,6 +95,13 @@ const App: React.FC = () => {
     const creds = storageService.getDBCredentials();
     setDbMode(creds ? 'CLOUD' : 'LOCAL');
   }, []);
+  
+  // Effect to update browser title dynamically
+  useEffect(() => {
+    if (config.browserTitle) {
+      document.title = config.browserTitle;
+    }
+  }, [config.browserTitle]);
 
   const triggerCloudSync = useCallback(async () => {
     setCloudStatus('SYNCING');
@@ -148,8 +156,8 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white p-10 text-center">
         <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-8"></div>
-        <h2 className="text-xl font-black uppercase tracking-widest mb-2">PartFlow Protocol</h2>
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 animate-pulse">Syncing Facility Registry via Cloud Mesh...</p>
+        <h2 className="text-xl font-black uppercase tracking-widest mb-2">{config.loadingHeadline || "PartFlow Protocol"}</h2>
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 animate-pulse">{config.loadingSubline || "Syncing Facility Registry via Cloud Mesh..."}</p>
       </div>
     );
   }

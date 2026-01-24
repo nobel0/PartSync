@@ -26,22 +26,21 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
       result = result.filter(p => p.manufacturingShop === filterShop);
     }
     
-    // 2. Crash-Proof Omni-Search (Case Insensitive scan of all properties)
+    // 2. Token-Based Search (Words, not just substring)
     if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase().trim();
+      const tokens = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean);
       result = result.filter(p => {
-        // We iterate over the values of the part object
-        return Object.entries(p).some(([key, value]) => {
-          // Skip non-searchable complex fields or metadata to prevent crashes
-          if (['history', 'imageUrl', 'updatedAt', 'lastReceivedAt'].includes(key)) return false;
-          
-          // CRITICAL: Only scan string/number primitives
-          if (typeof value === 'string' || typeof value === 'number') {
-            const strVal = value.toString().toLowerCase();
-            return strVal.includes(term);
-          }
-          return false;
-        });
+        // Create a large string of all searchable primitive values
+        const searchableText = Object.entries(p)
+          .map(([key, value]) => {
+            if (['history', 'imageUrl', 'updatedAt', 'lastReceivedAt', 'id'].includes(key)) return '';
+            if (typeof value === 'string' || typeof value === 'number') return value.toString().toLowerCase();
+            return '';
+          })
+          .join(' ');
+
+        // Check if EVERY token exists in the searchable text
+        return tokens.every(token => searchableText.includes(token));
       });
     }
     return result;
@@ -66,7 +65,7 @@ const Inventory: React.FC<InventoryProps> = ({ parts, config, user, onReceive, o
            <div className="text-slate-400"><ICONS.Search /></div>
            <input 
               type="text" 
-              placeholder="Search registry (e.g. P700, Engine, Rear Axle)..." 
+              placeholder="Search registry (e.g. 'Rear Axle' or 'P700 Engine')..." 
               className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

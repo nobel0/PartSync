@@ -20,17 +20,20 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
 
   const filteredParts = useMemo(() => {
     if (!searchTerm.trim()) return parts;
-    const term = searchTerm.toLowerCase().trim();
+    const tokens = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean);
     
     return parts.filter(p => {
-      // Robust Omni-Search that only scans primitives
-      return Object.entries(p).some(([key, value]) => {
-        if (['history', 'imageUrl', 'updatedAt', 'lastReceivedAt'].includes(key)) return false;
-        if (typeof value === 'string' || typeof value === 'number') {
-          return value.toString().toLowerCase().includes(term);
-        }
-        return false;
-      });
+      // Create searchable text dump from relevant fields
+      const searchableText = Object.entries(p)
+        .map(([key, value]) => {
+          if (['history', 'imageUrl', 'updatedAt', 'lastReceivedAt', 'id'].includes(key)) return '';
+          if (typeof value === 'string' || typeof value === 'number') return value.toString().toLowerCase();
+          return '';
+        })
+        .join(' ');
+        
+      // Check if all search tokens exist in the text dump
+      return tokens.every(token => searchableText.includes(token));
     });
   }, [parts, searchTerm]);
 
@@ -48,7 +51,7 @@ const InventorySheet: React.FC<InventorySheetProps> = ({ parts, config, user, on
         <div className="text-slate-400 pl-2"><ICONS.Search /></div>
         <input 
           type="text" 
-          placeholder="Omni-Search Sheet (IDs, Models, Serial Numbers, Shops)..." 
+          placeholder="Omni-Search Sheet (e.g. 'Rear Axle' or 'P700 Engine')..." 
           className="flex-1 bg-transparent border-none outline-none font-bold text-slate-600 placeholder:text-slate-300"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}

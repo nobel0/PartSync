@@ -123,6 +123,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
     updated.splice(index, 1);
     setFormData({ ...formData, [type]: updated });
   };
+  
+  const updateRegistryItem = (type: 'carModels' | 'manufacturingShops', index: number, val: string) => {
+    const updated = [...formData[type]];
+    updated[index] = val;
+    setFormData({ ...formData, [type]: updated });
+  };
 
   const handleAddUser = () => {
     if (!newUser.username || !newUser.email || !newUser.password) return alert("Fill all user fields.");
@@ -406,8 +412,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
              <div className="space-y-6">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Branding</h4>
                 <div>
-                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Platform Label</label>
+                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Platform Label (App Name)</label>
                    <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800" value={formData.appName} onChange={e => setFormData({ ...formData, appName: e.target.value })} />
+                </div>
+                <div>
+                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Browser Tab Title</label>
+                   <input className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800" value={formData.browserTitle || ''} onChange={e => setFormData({ ...formData, browserTitle: e.target.value })} />
                 </div>
                 <div>
                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Brand Accent Color</label>
@@ -419,7 +429,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
              </div>
 
              <div className="space-y-6">
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Admin Panel Navigation</h4>
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading Experience</h4>
+                 <div className="p-6 bg-slate-900 rounded-[24px] border border-slate-800 space-y-4">
+                    <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase mb-2 tracking-widest">Loading Headline</label>
+                        <input className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl font-bold text-white text-xs" value={formData.loadingHeadline || ''} onChange={e => setFormData({ ...formData, loadingHeadline: e.target.value })} />
+                    </div>
+                    <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase mb-2 tracking-widest">Loading Subline</label>
+                        <input className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl font-bold text-slate-400 text-xs" value={formData.loadingSubline || ''} onChange={e => setFormData({ ...formData, loadingSubline: e.target.value })} />
+                    </div>
+                 </div>
+
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6">Admin Panel Navigation</h4>
                  <div className="bg-slate-50 p-6 rounded-[24px] border border-slate-100 space-y-2">
                     {formData.adminTabs && formData.adminTabs.map((tab, idx) => (
                         <div key={tab.id} className="flex items-center gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-100">
@@ -451,9 +473,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 </div>
                 <div className="space-y-2">
                   {formData.carModels.map((m, i) => (
-                     <div key={i} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                        <span className="text-xs font-bold text-slate-700">{m}</span>
-                        <button onClick={() => removeItem('carModels', i)} className="text-slate-300 hover:text-red-600">✕</button>
+                     <div key={i} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm group">
+                        <input 
+                          className="text-xs font-bold text-slate-700 bg-transparent outline-none flex-1 border-b border-transparent focus:border-blue-500 transition-colors" 
+                          value={m} 
+                          onChange={(e) => updateRegistryItem('carModels', i, e.target.value)}
+                        />
+                        <button onClick={() => removeItem('carModels', i)} className="text-slate-300 hover:text-red-600 px-2">✕</button>
                      </div>
                   ))}
                 </div>
@@ -466,9 +492,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ config, onSaveConfig, onDataRef
                 </div>
                 <div className="space-y-2">
                   {formData.manufacturingShops.map((m, i) => (
-                     <div key={i} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                        <span className="text-xs font-bold text-slate-700">{m}</span>
-                        <button onClick={() => removeItem('manufacturingShops', i)} className="text-slate-300 hover:text-red-600">✕</button>
+                     <div key={i} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm group">
+                        <input 
+                          className="text-xs font-bold text-slate-700 bg-transparent outline-none flex-1 border-b border-transparent focus:border-blue-500 transition-colors" 
+                          value={m} 
+                          onChange={(e) => updateRegistryItem('manufacturingShops', i, e.target.value)}
+                        />
+                        <button onClick={() => removeItem('manufacturingShops', i)} className="text-slate-300 hover:text-red-600 px-2">✕</button>
                      </div>
                   ))}
                 </div>

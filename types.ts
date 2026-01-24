@@ -85,6 +85,9 @@ export interface AdminTab {
 
 export interface AppConfig {
   appName: string;
+  browserTitle?: string; // New
+  loadingHeadline?: string; // New
+  loadingSubline?: string; // New
   logoUrl?: string;
   primaryColor: string;
   accentColor: string;
@@ -95,7 +98,7 @@ export interface AppConfig {
   columns: ColumnDefinition[];
   users: User[];
   labels: Record<string, string>;
-  adminTabs: AdminTab[]; // Added for tab customization
+  adminTabs: AdminTab[]; 
   updatedAt: number;
 }
 
